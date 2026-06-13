@@ -4,6 +4,9 @@
   "description": "A static tech blog built with FUNSTACK Static, FUNSTACK Router, and ox-content.",
   "private": true,
   "type": "module",
+  "imports": {
+    "#*": "./src/*"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -20,6 +23,7 @@
     "@funstack/router": "^1.1.1",
     "@funstack/static": "^1.2.0",
     "@ox-content/napi": "^2.70.0",
+    "@paper-design/shaders-react": "0.0.76",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "shiki": "^4.2.0"

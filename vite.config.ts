@@ -5,9 +5,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [
     funstackStatic({
-      entries: "./src/entries.tsx",
+      entries: "./src/app/entries.tsx",
       // 生成した HTML と一緒に feed.xml / sitemap.xml を出力する。
-      build: "./src/build.ts",
+      build: "./src/app/build.ts",
       ssr: true,
     }),
     react(),
