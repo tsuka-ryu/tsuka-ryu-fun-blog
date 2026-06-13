@@ -1,5 +1,19 @@
 {
   // TypeScript ネイティブ版（tsgo / @typescript/native-preview）をエディタの言語サーバに使う。
   // 要: VS Code 拡張「TypeScript (Native Preview)」のインストール。
-  "typescript.experimental.useTsgo": true
+  "typescript.experimental.useTsgo": true,
+
+  // Code Spell Checker（cSpell）にプロジェクト固有語を登録してノイズを抑制。
+  "cSpell.words": [
+    "esbuild",
+    "frontmatter",
+    "funstack",
+    "napi",
+    "pnpm",
+    "shiki",
+    "takumi",
+    "tsgo",
+    "tsconfig",
+    "tsbuildinfo"
+  ]
 }
