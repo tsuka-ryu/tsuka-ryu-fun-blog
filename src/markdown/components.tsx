@@ -98,8 +98,11 @@ function InlineCode({ node }: NodeProps<"inlineCode">) {
   return <code>{node.value}</code>;
 }
 
+// http(s):// または // 始まり（プロトコル相対）を外部リンクとみなす。
+const EXTERNAL_URL = /^(https?:)?\/\//;
+
 function Link({ node }: NodeProps<"link">) {
-  const external = node.url.startsWith("http");
+  const external = EXTERNAL_URL.test(node.url);
   return (
     <a
       href={node.url}
@@ -111,8 +114,12 @@ function Link({ node }: NodeProps<"link">) {
   );
 }
 
+// TODO: width/height 必須化。CLS 対策で width/height を出したいが、mdast に寸法情報が
+// 無い。型で必須化するとリモート画像（http）が寸法解決できずビルド失敗になり「リモート画像も
+// 許可」方針と衝突するため保留中。リモート寸法の取得戦略（ビルド時 fetch か Markdown 明示記法）
+// が決まり次第、content.ts の走査で image ノードに width/height を注入 →型必須化を一括で入れる。
 function Image({ node }: NodeProps<"image">) {
-  return <img src={node.url} alt={node.alt ?? ""} />;
+  return <img src={node.url} alt={node.alt ?? ""} loading="lazy" decoding="async" />;
 }
 
 function List({ node }: NodeProps<"list">) {
@@ -124,7 +131,7 @@ function List({ node }: NodeProps<"list">) {
 }
 
 function ListItem({ node }: NodeProps<"listItem">) {
-  const isTask = node.checked === true || node.checked === false;
+  const isTask = typeof node.checked === "boolean";
   if (isTask) {
     return (
       <li className="task-list-item">

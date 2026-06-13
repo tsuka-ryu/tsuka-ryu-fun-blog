@@ -38,6 +38,28 @@ function slugFromPath(path: string): string {
   return path.replace(/^.*\/(.+)\.md$/, "$1");
 }
 
+// link/image の URL に許可するスキーム・形。http(s) / mailto はそのまま、
+// 絶対パス(/) ・相対パス(./, ../) ・フラグメント(#) ・拡張子付きの素パスを許す。
+// javascript: や data: など、それ以外のスキームは危険として弾く。
+const SAFE_URL = /^(https?:|mailto:|tel:|\/|\.\.?\/|#|[\w./-]+$)/i;
+
+// mdast を走査して link/image の URL を検証する。危険な URL を含む記事は
+// ビルドを失敗させ、世に出さない（frontmatter / lint 検証と同じ思想）。
+// TODO: width/height 必須化。将来 image ノードへ width/height を注入するなら、この走査に
+// 相乗りさせる。型必須化を保留している経緯は src/markdown/components.tsx の Image 参照。
+function validateUrls(node: MdastNode, path: string): void {
+  if (node.type === "link" || node.type === "image") {
+    if (!SAFE_URL.test(node.url)) {
+      throw new Error(
+        `[content] ${path}: 安全でない URL を検出しました（${node.url}）`,
+      );
+    }
+  }
+  if ("children" in node) {
+    for (const child of node.children) validateUrls(child, path);
+  }
+}
+
 /** frontmatter の date に要求する形式（YYYY-MM-DD）。 */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -123,6 +145,8 @@ const posts: Post[] = Object.entries(rawPosts)
     }
 
     const mdast = JSON.parse(parsed.ast) as MdastNode;
+    // link/image の URL を検証し、危険な URL の記事はビルドを止める。
+    validateUrls(mdast, path);
     // 見出しノードにアンカー id を付与（mdast をその場で書き換え）し、TOC を返す。
     const toc = extractToc(mdast);
 
