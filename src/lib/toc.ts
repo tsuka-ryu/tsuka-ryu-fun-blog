@@ -16,8 +16,8 @@ const TOC_MAX_DEPTH = 3;
 
 /** ノードとその子孫の可視テキストを連結する。 */
 function nodeText(node: MdastNode): string {
-  if (node.value) return node.value;
-  if (node.children) return node.children.map(nodeText).join("");
+  if ("value" in node) return node.value;
+  if ("children" in node) return node.children.map(nodeText).join("");
   return "";
 }
 
@@ -58,7 +58,7 @@ export function extractToc(root: MdastNode): TocEntry[] {
         entries.push({ depth, text, id });
       }
     }
-    node.children?.forEach(walk);
+    if ("children" in node) node.children.forEach(walk);
   };
 
   walk(root);
