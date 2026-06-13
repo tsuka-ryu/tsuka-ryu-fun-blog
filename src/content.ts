@@ -1,4 +1,10 @@
-import { parse, prepareSource } from "@ox-content/napi";
+import {
+  lintMarkdown,
+  parse,
+  prepareSource,
+  type JsMarkdownLintDiagnostic,
+  type JsMarkdownLintOptions,
+} from "@ox-content/napi";
 import type { MdastNode } from "#markdown/types.js";
 import { extractToc, slugify, type TocEntry } from "#lib/toc.js";
 
@@ -32,6 +38,67 @@ function slugFromPath(path: string): string {
   return path.replace(/^.*\/(.+)\.md$/, "$1");
 }
 
+/** frontmatter の date に要求する形式（YYYY-MM-DD）。 */
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+// 本文 Markdown の lint 設定。見出し構造や体裁の崩れを検出する。
+// これらのルールは warning として報告されるが、本ブログでは壊れた記事を
+// 出さない方針のため warning もビルド失敗扱いにする（下の lintPost 参照）。
+// spellcheck は日本語で誤検知が多いため無効。
+const LINT_OPTIONS: JsMarkdownLintOptions = {
+  rules: {
+    duplicateHeadings: true,
+    headingIncrement: true,
+    maxConsecutiveBlankLines: 1,
+    repeatedPunctuation: true,
+    repeatedWords: true,
+    spellcheck: false,
+    trailingSpaces: true,
+  },
+};
+
+function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
+  return diagnostics
+    .map(
+      (d) =>
+        `  [${d.severity}] ${d.ruleId} (${d.line}:${d.column}) ${d.message}`,
+    )
+    .join("\n");
+}
+
+// 本文を lint し、error / warning があればビルドを失敗させる。info は警告表示のみ。
+function lintPost(content: string, path: string): void {
+  const result = lintMarkdown(content, LINT_OPTIONS);
+  if (result.errorCount > 0 || result.warningCount > 0) {
+    throw new Error(
+      `[content] ${path} の lint に失敗しました:\n${formatDiagnostics(result.diagnostics)}`,
+    );
+  }
+  if (result.infoCount > 0) {
+    console.warn(
+      `[content] ${path} の lint 情報:\n${formatDiagnostics(result.diagnostics)}`,
+    );
+  }
+}
+
+// frontmatter を検証して PostFrontmatter に確定する。必須項目の欠落や
+// date の表記揺れはビルドを失敗させ、壊れた記事が世に出ないようにする。
+function assertFrontmatter(fm: unknown, path: string): PostFrontmatter {
+  if (typeof fm !== "object" || fm === null) {
+    throw new Error(`[content] ${path}: frontmatter がありません`);
+  }
+  const { title, date } = fm as Record<string, unknown>;
+  if (typeof title !== "string" || title.length === 0) {
+    throw new Error(`[content] ${path}: frontmatter.title が必要です`);
+  }
+  if (typeof date !== "string" || !DATE_PATTERN.test(date)) {
+    throw new Error(
+      `[content] ${path}: frontmatter.date は YYYY-MM-DD 形式で書いてください（実際: ${String(date)}）`,
+    );
+  }
+  return fm as PostFrontmatter;
+}
+
 // content.ts の中心。全記事をビルド時にパースして Post[] に変換し、
 // 新しい順に並べた配列を以降の取得関数へ供給する。
 const posts: Post[] = Object.entries(rawPosts)
@@ -39,6 +106,8 @@ const posts: Post[] = Object.entries(rawPosts)
     // YAML frontmatter を Rust 側で分離・パースし、残りの Markdown 本文を
     // mdast ツリー（JSON）にパースする。
     const prepared = prepareSource(raw, { frontmatter: true });
+    // frontmatter を除いた本文に対して lint をかける（行番号は本文基準）。
+    lintPost(prepared.content, path);
     const parsed = parse(prepared.content, {
       gfm: true,
       tables: true,
@@ -48,7 +117,9 @@ const posts: Post[] = Object.entries(rawPosts)
     });
 
     if (parsed.errors.length > 0) {
-      console.warn(`[content] errors while parsing ${path}:`, parsed.errors);
+      throw new Error(
+        `[content] ${path} のパースに失敗しました:\n${JSON.stringify(parsed.errors, null, 2)}`,
+      );
     }
 
     const mdast = JSON.parse(parsed.ast) as MdastNode;
@@ -57,7 +128,7 @@ const posts: Post[] = Object.entries(rawPosts)
 
     return {
       slug: slugFromPath(path),
-      frontmatter: prepared.frontmatter as PostFrontmatter,
+      frontmatter: assertFrontmatter(prepared.frontmatter, path),
       mdast,
       toc,
     };
@@ -66,7 +137,8 @@ const posts: Post[] = Object.entries(rawPosts)
   .sort((a, b) => (a.frontmatter.date < b.frontmatter.date ? 1 : -1));
 
 export function getAllPosts(): Post[] {
-  return posts;
+  // 内部配列の参照を渡すと呼び出し側の sort 等で破壊されるためコピーを返す。
+  return [...posts];
 }
 
 export function getPostBySlug(slug: string): Post | undefined {
