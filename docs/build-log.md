@@ -55,3 +55,26 @@
   - `scripts` を dev / build / preview / start に整備
   - `engines`（node `>=24.16.0` / pnpm `>=11.6.0`、`mise.toml` のピンと整合）
   - `packageManager: "pnpm@11.6.0"` を明示
+
+### 2026-06-13 — TypeScript ネイティブ版（tsgo）の導入
+
+「TypeScript 7 系にしたい」が出発点だが、npm の `typescript` は `latest=6.0.3` までで
+7.x は未公開（`next` も `6.0.0-dev` 系）。代わりに Go 製ネイティブ版プレビューを採用。
+
+- `@typescript/native-preview`（`7.0.0-dev.20260612.1`）を devDependency に追加。
+  - `tsgo` バイナリを提供。`pnpm exec tsgo --version` で動作確認済み。
+- 既存の `typescript` 6 系はエディタ／型解決の互換のため残置（併存）。
+- `scripts.typecheck` を `tsgo --noEmit` で追加（tsconfig.json 作成後に有効化）。
+
+> メモ: `typescript` 7 系が正式公開されたら本体も差し替え検討。
+
+### 2026-06-13 — `typescript` 6 を削除しネイティブ版に一本化
+
+native-preview にはエディタ対応（VS Code 拡張「TypeScript (Native Preview)」＋
+設定 `typescript.experimental.useTsgo`）が存在することを確認（microsoft/typescript-go）。
+LSP は "nearly all features implemented" 段階。エディタも tsgo で動かせるため 6 を撤去。
+
+- `pnpm remove typescript`（6.0.3 を削除）。peer に要求するパッケージは無く影響なし。
+- `.vscode/settings.json` に `"typescript.experimental.useTsgo": true` を追加。
+  - 各自 VS Code 拡張「TypeScript (Native Preview)」を入れるとエディタも tsgo になる。
+- 型チェックは CLI / エディタとも tsgo に統一。

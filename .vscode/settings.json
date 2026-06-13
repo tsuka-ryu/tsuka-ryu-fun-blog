@@ -1,0 +1,5 @@
+{
+  // TypeScript ネイティブ版（tsgo / @typescript/native-preview）をエディタの言語サーバに使う。
+  // 要: VS Code 拡張「TypeScript (Native Preview)」のインストール。
+  "typescript.experimental.useTsgo": true
+}
