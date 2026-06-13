@@ -1,0 +1,34 @@
+{
+  "name": "tsuka-ryu-funstack-blog",
+  "version": "1.0.0",
+  "description": "A static tech blog built with FUNSTACK Static, FUNSTACK Router, and ox-content.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite build && vite preview"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=24.16.0",
+    "pnpm": ">=11.6.0"
+  },
+  "dependencies": {
+    "@funstack/router": "^1.1.1",
+    "@funstack/static": "^1.2.0",
+    "@ox-content/napi": "^2.70.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "shiki": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "takumi-js": "^1.8.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}
