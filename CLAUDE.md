@@ -4,11 +4,13 @@ FUNSTACK Static で作る静的技術ブログ。
 
 ## 作業フロー
 
-- 作業を進めるときは `/Users/tsukaryu/Documents/funstack-static-test/docs/build-from-scratch.md`（設計図／手順書）を参考にする。
-- タスク完了ごとに `docs/build-log.md` に実際の作業内容を追記する。
-  - build-from-scratch.md = 設計図、build-log.md = 実際の作業履歴。
-- フェーズ完了時は `docs/build-log.md` 冒頭の「進捗サマリ」テーブルの該当行も
-  併せて状態（⬜ 未着手 / 🚧 進行中 / ✅ 完了）を更新する。更新漏れに注意。
+- 初期構築は `/Users/tsukaryu/Documents/funstack-static-test/docs/build-from-scratch.md`（設計図）に
+  沿って進め、フェーズ 13 までで全フェーズ完了済み。この設計図は**構築当時の参照用**として残す。
+- 以降の変更は `docs/build-log.md` に追記して記録する。これは ADR 的な変更履歴で、
+  「何を・なぜそう決めたか（採用理由・却下した代替案・ハマりどころ）」を残すのが目的。
+  単なる作業メモではなく、後から判断の経緯を追えるようにすること。
+- 進捗サマリ（フェーズ）は全完了済みなので通常は更新不要。新たに大きな作業単位を
+  立てたときだけ追記する。
 
 ## 環境
 
