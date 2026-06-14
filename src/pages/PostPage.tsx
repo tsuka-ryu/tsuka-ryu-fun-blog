@@ -16,9 +16,6 @@ export function PostPage({ slug }: { slug: string }) {
 
   return (
     <div className="post-layout">
-      {/* 目次は DOM 上で先に置き、狭い画面では上部に出す。広い画面では
-          グリッドの領域指定で右側の sticky カラムに移す（スタイルはフェーズ8）。 */}
-      <PostToc toc={post.toc} />
       <article className="post-page">
         <Seo
           title={post.frontmatter.title}
@@ -36,6 +33,10 @@ export function PostPage({ slug }: { slug: string }) {
           </p>
           <TagList tags={post.frontmatter.tags} />
         </header>
+
+        {/* 目次はタグの直後に折りたたみで置く。広い画面では sticky な右カラムへ
+            移す（.post-page を display:contents にしてグリッド項目化する）。 */}
+        <PostToc toc={post.toc} />
 
         {/* mdast はビルド時に React Server Component へマッピングされる。
             dangerouslySetInnerHTML 不要・Markdown コードはクライアントに載らない。 */}

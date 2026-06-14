@@ -24,6 +24,13 @@ export function formatDate(date: string): string {
   return `${d.year}年${d.month}月${d.day}日`;
 }
 
+// ISO 日付文字列を "2026.06.07" 形式（ドット区切り・月日は 0 埋め）に整形する。
+// 記事一覧で日付を左マージンに等幅で並べるとき、桁が揃って読みやすい。
+export function formatDateDots(date: string): string {
+  const d = Temporal.PlainDate.from(date);
+  return `${d.year}.${pad2(d.month)}.${pad2(d.day)}`;
+}
+
 // RFC 822（RSS 2.0 が要求する日付形式）の曜日・月名（dayOfWeek は 1=月〜7=日）。
 const RFC822_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const RFC822_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

@@ -10,8 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "start": "vite build && vite preview",
+    "preview": "vite preview --host",
+    "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
     "typecheck": "tsgo --noEmit"
   },
@@ -21,6 +21,7 @@
     "pnpm": ">=11.6.0"
   },
   "dependencies": {
+    "@fontsource/zen-kaku-gothic-new": "^5.2.7",
     "@funstack/router": "^1.1.1",
     "@funstack/static": "^1.2.0",
     "@ox-content/napi": "^2.70.0",
