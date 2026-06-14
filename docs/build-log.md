@@ -19,7 +19,7 @@
 | 6 | ページ | ✅ 完了 |
 | 7 | build entry | ✅ 完了 |
 | 8 | スタイル | ✅ 完了 |
-| 9 | サンプル記事 | ⬜ 未着手 |
+| 9 | サンプル記事 | ✅ 完了 |
 | 10 | ビルドと配信 | ⬜ 未着手 |
 
 ---
@@ -523,3 +523,39 @@ About 本文の追記 → 任意）。
   は未有効化のまま）。実表示の確認はサンプル記事投入後（フェーズ9〜10）。
 
 次回は **フェーズ9: サンプル記事**（`content/posts/*.md`）から再開する。
+
+### 2026-06-14 — フェーズ9: サンプル記事（設計図テンプレ3本）& lint 不具合の回避
+
+`content/posts/` に設計図フェーズ9のテンプレ記事3本を作成し、実ビルドで end-to-end 検証した。
+
+- 当初は既存ブログ tsuka-ryu's blog（`tsuka-ryu-s-blog`）の実記事11本を取り込む方針で、
+  frontmatter の `date` を `YYYY-MM-DD` へ切り詰め・`author` 行除去・`.md` 化し、参照画像も
+  コピーした。しかし strict lint（warning もビルド失敗）で **31 件の警告**が出て、その大半が
+  誤検知・意図的表現だった:
+  - `repeated-word` — 「satoriを使って」「Vimっぽい」「Haskellに入門」「PART 6 / PART 5」等、
+    いずれも単独出現または別語。CJK 隣接の英単語をうまくトークナイズできない誤検知。
+  - `repeated-punctuation` — 「感想ですが。。。」等、意図的な余韻表現。
+  - 実記事の取り込みは**別途やる方針**になったため、本フェーズでは破棄して設計図テンプレに切替。
+    取り込んだ `content/posts/*.md` と `public/blog/` は削除済み。
+- **設計図テンプレ3本**を作成: `hello-funstack.md` / `markdown-showcase.md` / `rsc-and-defer.md`
+  （いずれも設計図に忠実。frontmatter は title/date/description/tags）。
+- **lint 不具合の発見と回避** — テンプレでもビルドが落ちた。原因は ox-content の
+  `max-consecutive-blank-lines` ルールが**フェンス済みコードブロック直後の単独空行を
+  「連続空行」と誤判定**する不具合（最小再現: `## A` → ```code``` → 空行 → `## B`）。
+  コードを含む記事は正しい Markdown でもビルド不能になり、技術ブログでは致命的。
+  - このルールは `u32` 専用（`false` 不可）かつデフォルト ON のため options から外しても
+    無効化できない。そこで `src/content.ts` の `lintPost` に `NON_FATAL_RULES`
+    （`max-consecutive-blank-lines`）を設け、**このルールの診断だけ非致命に降格**
+    （warning 表示のみ・ビルドは止めない）。他ルールの warning は従来どおりビルド失敗のまま。
+  - `repeatedWords` / `repeatedPunctuation` はテンプレでは発火しないため strict 維持。実記事を
+    入れる際は誤検知で再燃する見込みだが、それは実記事取り込み（別途）の時に対応する。
+- **実ビルド検証（`pnpm build`）exit 0**。生成物を確認:
+  - HTML: `index` / `about` / `tags` / `404` / `posts/*`（3本）/ タグ別ページ。
+  - 追加成果物（フェーズ7 build entry 経由）: `feed.xml` / `sitemap.xml` /
+    `search-index.json` / `search.js` / `og/*.png`（3枚・日本語フォント込み）。
+  - これによりフェーズ7（build entry）・8（スタイル CSS バンドル）・9（記事）が実物で初めて
+    通しで動くことを確認。`pnpm typecheck`（tsgo）も exit 0。
+- 既知の軽微点（テンプレなので未対応）: PostPage は frontmatter の title を `<h1>` で出すが、
+  テンプレ本文も先頭に `# title` を持つため h1 が二重になる。実記事差し替え時に解消想定。
+
+次回は **フェーズ10: ビルドと配信**（preview / デプロイ）から再開する。

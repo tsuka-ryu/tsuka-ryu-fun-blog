@@ -67,17 +67,24 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 // これらのルールは warning として報告されるが、本ブログでは壊れた記事を
 // 出さない方針のため warning もビルド失敗扱いにする（下の lintPost 参照）。
 // spellcheck は日本語で誤検知が多いため無効。
+// maxConsecutiveBlankLines はデフォルト ON のため明示せず（u32 専用で false 不可）。
+// ただし後述の不具合により lintPost で非致命に降格する。
 const LINT_OPTIONS: JsMarkdownLintOptions = {
   rules: {
     duplicateHeadings: true,
     headingIncrement: true,
-    maxConsecutiveBlankLines: 1,
     repeatedPunctuation: true,
     repeatedWords: true,
     spellcheck: false,
     trailingSpaces: true,
   },
 };
+
+// 非致命に降格する lint ルール。max-consecutive-blank-lines はフェンス済み
+// コードブロック直後の単独空行を「連続空行」と誤判定する不具合があり、コードを
+// 含む記事が正しい Markdown でもビルド不能になる（最小再現: `## A` →
+// ```code``` → 空行 → `## B`）。warning 表示のみに留め、ビルドは止めない。
+const NON_FATAL_RULES = new Set(["max-consecutive-blank-lines"]);
 
 function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
   return diagnostics
@@ -88,17 +95,24 @@ function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
     .join("\n");
 }
 
-// 本文を lint し、error / warning があればビルドを失敗させる。info は警告表示のみ。
+// 本文を lint し、error / warning があればビルドを失敗させる。ただし
+// NON_FATAL_RULES のルールと info は警告表示のみに留める。
 function lintPost(content: string, path: string): void {
-  const result = lintMarkdown(content, LINT_OPTIONS);
-  if (result.errorCount > 0 || result.warningCount > 0) {
+  const { diagnostics } = lintMarkdown(content, LINT_OPTIONS);
+  const fatal = diagnostics.filter(
+    (d) =>
+      (d.severity === "error" || d.severity === "warning") &&
+      !NON_FATAL_RULES.has(d.ruleId),
+  );
+  if (fatal.length > 0) {
     throw new Error(
-      `[content] ${path} の lint に失敗しました:\n${formatDiagnostics(result.diagnostics)}`,
+      `[content] ${path} の lint に失敗しました:\n${formatDiagnostics(fatal)}`,
     );
   }
-  if (result.infoCount > 0) {
+  const warnings = diagnostics.filter((d) => !fatal.includes(d));
+  if (warnings.length > 0) {
     console.warn(
-      `[content] ${path} の lint 情報:\n${formatDiagnostics(result.diagnostics)}`,
+      `[content] ${path} の lint 警告:\n${formatDiagnostics(warnings)}`,
     );
   }
 }
