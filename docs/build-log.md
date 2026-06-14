@@ -17,7 +17,7 @@
 | 4 | lib（ユーティリティ & ビルド時生成） | ✅ 完了 |
 | 5 | コンポーネント | ✅ 完了 |
 | 6 | ページ | ✅ 完了 |
-| 7 | build entry | ⬜ 未着手 |
+| 7 | build entry | ✅ 完了 |
 | 8 | スタイル | ⬜ 未着手 |
 | 9 | サンプル記事 | ⬜ 未着手 |
 | 10 | ビルドと配信 | ⬜ 未着手 |
@@ -480,4 +480,24 @@ subpath（`#*`）に統一。依存の末端（葉）から作り、各段階で
 残った論点はいずれもコード外の領域（記事 0 件の空表示・`post-layout` グリッド → フェーズ8、
 About 本文の追記 → 任意）。
 
-次回は **フェーズ7: build entry**（`src/build.ts`）から再開する。
+### 2026-06-14 — フェーズ7: build entry（`src/app/build.ts`）
+
+設計図フェーズ7の build entry を作成。設計図は `src/build.ts` だが、本リポジトリは結線を
+`src/app/` に集約する方針（`vite.config.ts` の `build: "./src/app/build.ts"`）なので
+`src/app/build.ts` に配置。import は subpath（`#lib/*`）に統一。
+
+- `src/app/build.ts` — `@funstack/static/server` の `BuildEntryFunction` を default export。
+  `BuildEntryContext`（`{ build, outDir }`）を実型で確認。`Promise.all` で既定ビルド `build()`
+  と並列に、フェーズ4 で作った生成器の出力を `outDir` 直下へ書き出す:
+  - `feed.xml` … `buildRssFeed()`（`#lib/feed.js`）
+  - `sitemap.xml` … `buildSitemap()`（同上）
+  - `search-index.json` … `buildSearchIndexJson()`（`#lib/search.js`）
+  - `search.js` … `buildSearchRuntimeJs()`（同上、クライアント用 BM25 ランタイム）
+  - OG 画像 … `generateOgImages(outDir)`（`#lib/og.js`、`<outDir>/og/<slug>.png`）
+- 依存（feed/search/og）の export 名・引数は実装と一致を確認済み。`build()` と追加生成を
+  並列化してクリティカルパスから外す設計は設計図どおり。
+- `pnpm typecheck`（tsgo）exit 0。実ビルド（`vite build`）での出力確認はサンプル記事
+  投入後（フェーズ9）〜ビルド検証（フェーズ10）で行う。現状 `content/posts/` は空のため
+  RSS/sitemap/検索/OG はいずれも 0 件分の生成になる。
+
+次回は **フェーズ8: スタイル**（`src/styles.css`）から再開する。
