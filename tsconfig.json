@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["react", "react-dom"],
+    "types": ["node", "react", "react-dom"],
     "moduleDetection": "force",
 
     "strict": true,
