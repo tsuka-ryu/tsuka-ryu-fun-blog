@@ -2,11 +2,12 @@
 
 import type { ReactNode } from "react";
 import { useLocation } from "@funstack/router";
+import { SearchBox } from "#components/SearchBox.js";
 import { SITE_TITLE, SOCIAL_LINKS } from "#constants.js";
 
-// グローバルナビの項目。パスとラベルの組。ホーム（/）が記事一覧を兼ねる。
+// グローバルナビの項目。パスとラベルの組。ホーム（/）はブランド名がリンクを
+// 兼ねるため Home は置かず、Tags / About のみを並べる。
 const navItems = [
-  { path: "/", label: "Home" },
   { path: "/tags", label: "Tags" },
   { path: "/about", label: "About" },
 ];
@@ -42,23 +43,28 @@ export function Header() {
   return (
     <header className="header">
       <div className="header-inner">
-        <a href="/" className="brand">
-          {SITE_TITLE}
-        </a>
-        <nav className="nav">
-          {navItems.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <a
-                key={item.path}
-                href={item.path}
-                className={active ? "nav-link active" : "nav-link"}
-                aria-current={active ? "page" : undefined}
-              >
-                {item.label}
-              </a>
-            );
-          })}
+        <div className="header-left">
+          <a href="/" className="brand">
+            {SITE_TITLE}
+          </a>
+          <nav className="nav">
+            {navItems.map((item) => {
+              const active = isActive(item.path);
+              return (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  className={active ? "nav-link active" : "nav-link"}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
+          </nav>
+        </div>
+        <div className="header-right">
+          <SearchBox />
           <span className="nav-social">
             {SOCIAL_LINKS.map((social) => (
               <a
@@ -73,7 +79,7 @@ export function Header() {
               </a>
             ))}
           </span>
-        </nav>
+        </div>
       </div>
     </header>
   );

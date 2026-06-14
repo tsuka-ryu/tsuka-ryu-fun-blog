@@ -23,7 +23,7 @@
 | 10 | ビルドと配信 | ✅ 完了 |
 | 11 | README 追加 | ✅ 完了 |
 | 12 | 現行サイトの記事を移行 | ✅ 完了 |
-| 13 | サイトデザインの見直し | ⬜ 未着手 |
+| 13 | サイトデザインの見直し | ✅ 完了 |
 
 > フェーズ 11 以降は設計図（build-from-scratch.md）の範囲外で、本リポジトリ独自の追加フェーズ。
 > - 11: プロジェクト直下に README を追加（概要・構成・開発/ビルド手順など）。
@@ -725,3 +725,66 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
 
 次回は **フェーズ13: サイトデザインの見直し**（テンプレ然とした見た目を tsuka-ryu.dev 寄りに
 調整等）から再開する。
+
+### 2026-06-14 — フェーズ13: サイトデザインの見直し（配色＋装飾の軽め調整）
+
+方針の確認（ユーザー選択）:
+
+- ホーム: レイアウトは現状維持のまま、**配色＋装飾を tsuka-ryu.dev 寄りに**調整して
+  テンプレ感を薄める（軽め調整）。全面 Hero 化はしない。
+- アクセント配色: 現行の紫から **tsuka-ryu.dev 系のオレンジ/琥珀**へ切替。
+
+実作業（`src/styles.css` のみ。コンポーネントの構造変更なし）:
+
+- **アクセント色をオレンジ系へ**。`--primary` / `--primary-hover` を更新。
+  - ライト: `hsl(25 95% 40%)`（hover `hsl(25 95% 32%)`）。
+  - ダーク: `hsl(33 100% 50%)`（hover `hsl(33 100% 60%)`）。
+  - リンク・タグ枠・`blockquote` の縦線・検索フォーカス枠などはいずれも `--primary`
+    参照なので、トークン差し替えだけでオレンジに統一される。
+- **大見出しをグラデーション・クリップテキスト化**（tsuka-ryu.dev の特徴）。
+  `.intro h1`（ホーム/タグの intro）と `.post-title` に
+  `linear-gradient(to bottom, var(--text), var(--text-muted))` + `background-clip:text`
+  を適用。色はテキスト系トークンから作るのでライト/ダーク両方に追従する。
+  併せて再利用用に `.gradient-heading` クラスも定義。
+
+**SearchBox をヘッダーへ移動**（ユーザー要望）:
+
+- `HomePage` の intro 内にあった `<SearchBox />` を撤去し、`Header` のナビ先頭へ移設。
+  Header は元々 Client Component なのでそのまま組み込めた。
+- ヘッダー用の見た目を CSS に追加。`.header .search` は幅を `clamp(7rem,22vw,13rem)`
+  に絞り、入力のパディング/フォントを小さめに。ドロップダウン（`.search-results`）は
+  入力より広げて右端揃え（`right:0; width:min(22rem,80vw)`）で下に出す。
+
+**背景・境界・テキストを neutral grey 化**（ユーザー指摘「背景色が変わってない」）:
+
+- GitHub 風の青み grey をやめ、tsuka-ryu.dev（fumadocs neutral プリセット）に合わせた
+  純 neutral grey へ。
+  - ライト: `--bg #fff`（据え置き）/ `--bg-alt #f5f5f5` / `--border #e3e3e3` /
+    `--text #171717` / `--text-muted #666` / `--code-bg #f5f5f5`。
+  - ダーク: `--bg #121212`（tsuka-ryu.dev の shader colorBack と一致）/ `--bg-alt #1e1e1e` /
+    `--border #2a2a2a` / `--text #ededed` / `--text-muted #a1a1a1` / `--code-bg #1c1c1c`。
+  - ダーク表示で背景がはっきり変わる。ライトは元々白なので変化は境界・テキストの neutral 化が中心。
+
+**ヘッダーの配置見直し**（ユーザー要望）:
+
+- ナビから **Home を削除**（ブランド名がホームへのリンクを兼ねるため、タイトルと重複）。
+- ヘッダーを **左グループ（ブランド + Tags/About）/ 右グループ（検索 + ソーシャル）** に再編。
+  `header-inner` の `space-between` で左右に分け、`Tags`/`About` をブランド右隣に左寄せ、
+  検索とソーシャルアイコンを右端へ。`.header-left` / `.header-right` を CSS に追加。
+
+**ホーム上部の整理**（ユーザー指摘「トップの2つがダサい」）:
+
+- タグラインを `SITE_DESCRIPTION`（「tsuka-ryuの個人ブログ」＝説明文くさい）から、tsuka-ryu.dev
+  と同じキャッチコピー **「キーボードを叩く、何かが壊れる。」** に変更。表示専用の
+  `SITE_CATCHPHRASE` を `constants.ts` に追加し、SEO/RSS 用の `SITE_DESCRIPTION` は温存（用途分離）。
+- ぽつんと置いていた **「タグ一覧 →」リンクを削除**（Tags はヘッダーに移したので冗長）。
+  未使用になった `.intro-links` CSS も除去。
+
+検証:
+
+- `pnpm typecheck`（tsgo）exit 0 / `pnpm build` exit 0。
+- ミニファイ後の出力 CSS で `--primary:#c75605`（ライト）/ `#ff8c00`（ダーク）、
+  背景 `--bg:#121212`（ダーク）/ `#fff`（ライト）、`background-clip:text` を確認。
+
+> これでフェーズ 0〜13 がすべて ✅ 完了。設計図（build-from-scratch.md）+ 独自拡張
+> （11 README / 12 記事移行 / 13 デザイン見直し）まで一通り完了した状態。
