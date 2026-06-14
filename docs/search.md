@@ -39,14 +39,14 @@ src/lib/search.ts
 
 各記事は次の形に変換される（`searchDocuments()`）。
 
-| フィールド | 中身 | 由来 |
-| --- | --- | --- |
-| `id` | 記事スラッグ | `post.slug` |
-| `title` | 記事タイトル | `post.frontmatter.title` |
-| `url` | 記事 URL | `/posts/<slug>` |
-| `body` | 本文テキスト | 段落・リスト等の `text` / `inlineCode` |
-| `headings` | 見出しテキスト | `heading` ノード（h1〜h6） |
-| `code` | コードブロック | `code` ノード（フェンスドコード） |
+| フィールド | 中身           | 由来                                   |
+| ---------- | -------------- | -------------------------------------- |
+| `id`       | 記事スラッグ   | `post.slug`                            |
+| `title`    | 記事タイトル   | `post.frontmatter.title`               |
+| `url`      | 記事 URL       | `/posts/<slug>`                        |
+| `body`     | 本文テキスト   | 段落・リスト等の `text` / `inlineCode` |
+| `headings` | 見出しテキスト | `heading` ノード（h1〜h6）             |
+| `code`     | コードブロック | `code` ノード（フェンスドコード）      |
 
 `title` / `headings` / `body` / `code` を分けて渡すことで、ox-content 側がフィールドごとに
 重み付けして関連度（BM25 スコア）を計算できる。
@@ -71,12 +71,12 @@ mdast ツリーを走査し、ノード種別ごとに振り分ける。
 
 `generateSearchModuleFromOptions` に渡す `JsSearchRuntimeOptions`。
 
-| オプション | 値 | 意味 |
-| --- | --- | --- |
-| `enabled` | `true` | 検索を有効化 |
-| `limit` | `8` | 表示する最大件数 |
-| `prefix` | `true` | 前方一致を有効化 |
-| `placeholder` | `"記事を検索..."` | 入力欄のプレースホルダ |
-| `hotkey` | `"/"` | 検索にフォーカスするキーボードショートカット |
+| オプション    | 値                | 意味                                         |
+| ------------- | ----------------- | -------------------------------------------- |
+| `enabled`     | `true`            | 検索を有効化                                 |
+| `limit`       | `8`               | 表示する最大件数                             |
+| `prefix`      | `true`            | 前方一致を有効化                             |
+| `placeholder` | `"記事を検索..."` | 入力欄のプレースホルダ                       |
+| `hotkey`      | `"/"`             | 検索にフォーカスするキーボードショートカット |
 
 インデックスの取得元パスは `INDEX_PATH = "/search-index.json"` で固定。

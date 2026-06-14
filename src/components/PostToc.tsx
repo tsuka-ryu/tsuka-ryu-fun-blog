@@ -15,11 +15,7 @@ export function PostToc({ toc }: { toc: TocEntry[] }) {
       <summary className="post-toc-title">目次</summary>
       <ul className="post-toc-list" aria-label="目次">
         {toc.map((entry) => (
-          <li
-            key={entry.id}
-            className="post-toc-item"
-            data-depth={entry.depth - minDepth}
-          >
+          <li key={entry.id} className="post-toc-item" data-depth={entry.depth - minDepth}>
             <a href={`#${entry.id}`}>{entry.text}</a>
           </li>
         ))}

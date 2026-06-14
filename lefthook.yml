@@ -1,0 +1,17 @@
+# push 前に「整形済み・型OK・ビルド可能」を保証する。
+# コミット単位を軽く保ちたいので pre-commit ではなく pre-push に寄せる。
+pre-push:
+  parallel: false
+  commands:
+    format:
+      run: pnpm run format:check
+      fail_text: "未整形のファイルがあります。`pnpm run format` を実行してコミットしてください。"
+    lint:
+      run: pnpm run lint
+      fail_text: "lint エラーがあります。`pnpm run lint:fix` で修正できる場合があります。"
+    typecheck:
+      run: pnpm run typecheck
+      fail_text: "型エラーがあります。push 前に解消してください。"
+    build:
+      run: pnpm run build
+      fail_text: "ビルドに失敗しました。push 前に解消してください。"

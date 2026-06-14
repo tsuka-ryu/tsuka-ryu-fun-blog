@@ -20,14 +20,14 @@
 
 ## 技術スタック
 
-| ツール | 役割 |
-| --- | --- |
-| `@funstack/static` | RSC ベースの静的サイト生成（SSG） |
-| `@funstack/router` | Navigation API ベースのルーティング & クライアント遷移 |
+| ツール             | 役割                                                    |
+| ------------------ | ------------------------------------------------------- |
+| `@funstack/static` | RSC ベースの静的サイト生成（SSG）                       |
+| `@funstack/router` | Navigation API ベースのルーティング & クライアント遷移  |
 | `@ox-content/napi` | Rust 製 Markdown → mdast 変換・全文検索インデックス生成 |
-| `shiki` | ビルド時シンタックスハイライト |
-| `takumi-js` | ビルド時 OG 画像生成（Rust 製、ヘッドレスブラウザ不要） |
-| React 19 / Vite 8 | UI / バンドラ |
+| `shiki`            | ビルド時シンタックスハイライト                          |
+| `takumi-js`        | ビルド時 OG 画像生成（Rust 製、ヘッドレスブラウザ不要） |
+| React 19 / Vite 8  | UI / バンドラ                                           |
 
 ## 必要環境
 

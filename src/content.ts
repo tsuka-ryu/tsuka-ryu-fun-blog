@@ -1,3 +1,4 @@
+import { extractToc, slugify, type TocEntry } from "#lib/toc.js";
 import {
   lintMarkdown,
   parse,
@@ -6,8 +7,8 @@ import {
   type JsMarkdownLintOptions,
 } from "@ox-content/napi";
 import { transliterate } from "transliteration";
+
 import type { MdastNode } from "#markdown/types.js";
-import { extractToc, slugify, type TocEntry } from "#lib/toc.js";
 
 /** content/posts/*.md 各ファイル冒頭の frontmatter の想定形。 */
 export interface PostFrontmatter {
@@ -53,9 +54,7 @@ const SAFE_URL = /^(https?:|mailto:|tel:|\/|\.\.?\/|#|[\w./-]+$)/i;
 function validateUrls(node: MdastNode, path: string): void {
   if (node.type === "link" || node.type === "image") {
     if (!SAFE_URL.test(node.url)) {
-      throw new Error(
-        `[content] ${path}: 安全でない URL を検出しました（${node.url}）`,
-      );
+      throw new Error(`[content] ${path}: 安全でない URL を検出しました（${node.url}）`);
     }
   }
   if ("children" in node) {
@@ -91,10 +90,7 @@ const NON_FATAL_RULES = new Set(["max-consecutive-blank-lines"]);
 
 function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
   return diagnostics
-    .map(
-      (d) =>
-        `  [${d.severity}] ${d.ruleId} (${d.line}:${d.column}) ${d.message}`,
-    )
+    .map((d) => `  [${d.severity}] ${d.ruleId} (${d.line}:${d.column}) ${d.message}`)
     .join("\n");
 }
 
@@ -103,20 +99,14 @@ function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
 function lintPost(content: string, path: string): void {
   const { diagnostics } = lintMarkdown(content, LINT_OPTIONS);
   const fatal = diagnostics.filter(
-    (d) =>
-      (d.severity === "error" || d.severity === "warning") &&
-      !NON_FATAL_RULES.has(d.ruleId),
+    (d) => (d.severity === "error" || d.severity === "warning") && !NON_FATAL_RULES.has(d.ruleId),
   );
   if (fatal.length > 0) {
-    throw new Error(
-      `[content] ${path} の lint に失敗しました:\n${formatDiagnostics(fatal)}`,
-    );
+    throw new Error(`[content] ${path} の lint に失敗しました:\n${formatDiagnostics(fatal)}`);
   }
   const warnings = diagnostics.filter((d) => !fatal.includes(d));
   if (warnings.length > 0) {
-    console.warn(
-      `[content] ${path} の lint 警告:\n${formatDiagnostics(warnings)}`,
-    );
+    console.warn(`[content] ${path} の lint 警告:\n${formatDiagnostics(warnings)}`);
   }
 }
 
@@ -231,8 +221,6 @@ export function getAllTags(): TagInfo[] {
 }
 
 /** タグスラッグの表示ラベルと記事一覧。未知のスラッグなら undefined。 */
-export function getTagBySlug(
-  slug: string,
-): { tag: string; posts: Post[] } | undefined {
+export function getTagBySlug(slug: string): { tag: string; posts: Post[] } | undefined {
   return tagMap.get(slug);
 }

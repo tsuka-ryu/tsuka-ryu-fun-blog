@@ -1,13 +1,12 @@
-import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { MdastNode, NodeProps } from "#markdown/types.js";
 import { highlight } from "#markdown/highlight.js";
+import { createElement, type CSSProperties, type ReactNode } from "react";
+
+import type { MdastNode, NodeProps } from "#markdown/types.js";
 
 // 子ノードの配列を、それぞれ MarkdownNode 経由でディスパッチして描画する。
 export function renderChildren(children: MdastNode[] | undefined): ReactNode {
   if (!children) return null;
-  return children.map((child, index) => (
-    <MarkdownNode key={index} node={child} />
-  ));
+  return children.map((child, index) => <MarkdownNode key={index} node={child} />);
 }
 
 // 単一の mdast ノードを type で分岐して描画する。switch の各 case 内では

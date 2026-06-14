@@ -1,6 +1,7 @@
-import type { Post } from "#content.js";
-import { formatDateDots } from "#lib/time.js";
 import { TagList } from "#components/TagList.js";
+import { formatDateDots } from "#lib/time.js";
+
+import type { Post } from "#content.js";
 
 // 記事のサマリーカード。ホームページとタグページで共有する。
 // 日付を本文の左マージンに逃がし、タイトル・説明・タグを 1 列にまとめる。

@@ -1,5 +1,5 @@
-import { Temporal } from "temporal-polyfill-lite";
 import { SITE_TIME_ZONE } from "#constants.js";
+import { Temporal } from "temporal-polyfill-lite";
 
 // アプリ全体の時刻処理をここに集約する。サーバー（ビルド）もクライアント
 // （ハイドレーション）も必ず SITE_TIME_ZONE（JST）で扱い、環境依存の TZ で
@@ -33,7 +33,20 @@ export function formatDateDots(date: string): string {
 
 // RFC 822（RSS 2.0 が要求する日付形式）の曜日・月名（dayOfWeek は 1=月〜7=日）。
 const RFC822_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const RFC822_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const RFC822_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");

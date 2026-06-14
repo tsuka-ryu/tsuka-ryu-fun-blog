@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import {
   codeToTokens,
   bundledLanguages,
@@ -6,6 +5,8 @@ import {
   type SpecialLanguage,
   type ThemedToken,
 } from "shiki";
+
+import type { CSSProperties } from "react";
 
 // サーバー（ビルド）環境だけで実行されるシンタックスハイライト。
 //
@@ -48,10 +49,7 @@ function parseStyle(css: string | false | undefined): CSSProperties | undefined 
 // code をビルド時にハイライトし、トークン化された行とルート <pre> のスタイルを返す。
 // 未知・未指定の言語はプレーンテキストにフォールバックし、未対応のコードフェンスで
 // ビルドが壊れないようにする。
-export async function highlight(
-  code: string,
-  lang: string | undefined,
-): Promise<HighlightResult> {
+export async function highlight(code: string, lang: string | undefined): Promise<HighlightResult> {
   // isBundledLanguage で絞り込み済み。未対応・未指定は "text"（SpecialLanguage）。
   const safeLang: BundledLanguage | SpecialLanguage =
     lang && isBundledLanguage(lang) ? (lang as BundledLanguage) : "text";

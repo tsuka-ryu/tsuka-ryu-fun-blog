@@ -45,14 +45,7 @@ function absoluteUrl(pathOrUrl?: string): string | undefined {
 // 現在ページのドキュメントメタデータを出力する。React 19 は <title> / <meta> /
 // <link> を <head> に巻き上げるため、静的生成された HTML でもクライアント遷移時でも
 // 同じように効く。サイト名・説明・オリジンは constants.ts を単一の定義元とする。
-export function Seo({
-  title,
-  description,
-  path,
-  image,
-  type = "website",
-  noindex,
-}: SeoProps) {
+export function Seo({ title, description, path, image, type = "website", noindex }: SeoProps) {
   const fullTitle = title ? `${title} — ${SITE_TITLE}` : SITE_TITLE;
   const desc = description ?? SITE_DESCRIPTION;
   const canonical = absoluteUrl(path);
@@ -80,10 +73,7 @@ export function Seo({
         </>
       )}
 
-      <meta
-        name="twitter:card"
-        content={ogImage ? "summary_large_image" : "summary"}
-      />
+      <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={desc} />
       {ogImage && <meta name="twitter:image" content={ogImage} />}

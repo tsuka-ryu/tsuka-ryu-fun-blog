@@ -1,10 +1,11 @@
+import { getAllPosts } from "#content.js";
 import {
   buildSearchIndex,
   generateSearchModuleFromOptions,
   type JsSearchDocument,
   type JsSearchRuntimeOptions,
 } from "@ox-content/napi";
-import { getAllPosts } from "#content.js";
+
 import type { MdastNode } from "#markdown/types.js";
 
 // ビルド時の検索処理。記事を ox-content の検索ドキュメントへ変換してインデックスを

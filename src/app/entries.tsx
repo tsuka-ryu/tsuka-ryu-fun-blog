@@ -1,6 +1,7 @@
-import type { EntryDefinition } from "@funstack/static/entries";
-import type { RouteDefinition } from "@funstack/router";
 import App, { routes } from "#app/App.js";
+
+import type { RouteDefinition } from "@funstack/router";
+import type { EntryDefinition } from "@funstack/static/entries";
 
 // ルートツリーを再帰的に走査し、生成すべき全ページのフルパス一覧を集める。
 function collectPaths(routeDefs: RouteDefinition[], prefix: string): string[] {

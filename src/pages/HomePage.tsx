@@ -1,8 +1,8 @@
-import { getAllPosts } from "#content.js";
-import { Seo } from "#components/Seo.js";
-import { PostCard } from "#components/PostCard.js";
 import { Asterisk, SceneBreak } from "#components/Asterisk.js";
+import { PostCard } from "#components/PostCard.js";
+import { Seo } from "#components/Seo.js";
 import { SITE_CATCHPHRASE, SITE_NAME } from "#constants.js";
+import { getAllPosts } from "#content.js";
 
 // トップページ。名前を大きく出したヒーローと、記事一覧を並べる。
 export function HomePage() {

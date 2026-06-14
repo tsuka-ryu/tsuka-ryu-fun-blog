@@ -1,7 +1,7 @@
-import { Suspense } from "react";
-import { Outlet } from "@funstack/router";
-import { Header } from "#components/Header.js";
 import { Footer } from "#components/Footer.js";
+import { Header } from "#components/Header.js";
+import { Outlet } from "@funstack/router";
+import { Suspense } from "react";
 
 // 全ページ共通の枠組み。ヘッダー／フッターで本文（Outlet）を挟む。
 // 本文はルートごとに defer されるため Suspense で囲む。

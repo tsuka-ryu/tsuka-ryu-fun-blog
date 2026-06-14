@@ -1,0 +1,4 @@
+# lefthook はインストール時に Git hooks 設定用のスクリプトを実行する。
+# pnpm はデフォルトでビルドスクリプトを止めるため、明示的に許可する。
+allowBuilds:
+  lefthook: true

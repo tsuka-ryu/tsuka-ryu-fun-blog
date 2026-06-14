@@ -23,9 +23,7 @@ interface SearchRuntime {
 export function SearchBox() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">(
-    "loading",
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const runtimeRef = useRef<SearchRuntime | null>(null);
 
   // マウント時に一度だけランタイムをロードする。指定子は実行時に組み立てることで、
@@ -75,9 +73,7 @@ export function SearchBox() {
       <input
         type="search"
         className="search-input"
-        placeholder={
-          unavailable ? "検索はビルド後に利用できます" : "記事を検索..."
-        }
+        placeholder={unavailable ? "検索はビルド後に利用できます" : "記事を検索..."}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         disabled={unavailable}
@@ -93,9 +89,7 @@ export function SearchBox() {
                 <a href={result.url} onClick={() => setQuery("")}>
                   <span className="search-result-title">{result.title}</span>
                   {result.snippet && (
-                    <span className="search-result-snippet">
-                      {result.snippet}
-                    </span>
+                    <span className="search-result-snippet">{result.snippet}</span>
                   )}
                 </a>
               </li>

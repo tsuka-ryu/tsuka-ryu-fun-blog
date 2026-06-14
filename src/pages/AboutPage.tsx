@@ -1,5 +1,5 @@
-import ShaderGimmick from "#components/ShaderGimmick.js";
 import { Seo } from "#components/Seo.js";
+import ShaderGimmick from "#components/ShaderGimmick.js";
 
 // About ページ。tsuka-ryu の自己紹介とシェーダーの島デモを置く。
 // 内容は既存ブログ tsuka-ryu's blog の About と揃える。

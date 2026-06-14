@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useLocation } from "@funstack/router";
-import { SearchBox } from "#components/SearchBox.js";
 import { Asterisk } from "#components/Asterisk.js";
+import { SearchBox } from "#components/SearchBox.js";
 import { SITE_NAME, SOCIAL_LINKS } from "#constants.js";
+import { useLocation } from "@funstack/router";
+
+import type { ReactNode } from "react";
 
 // グローバルナビの項目。パスとラベルの組。ホーム（/）はブランド名がリンクを
 // 兼ねるため Home は置かず、Tags / About のみを並べる。

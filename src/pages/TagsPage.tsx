@@ -1,5 +1,5 @@
-import { getAllTags } from "#content.js";
 import { Seo } from "#components/Seo.js";
+import { getAllTags } from "#content.js";
 
 // `/tags` — 全タグと記事数の一覧。
 export function TagsPage() {

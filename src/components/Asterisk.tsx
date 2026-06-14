@@ -5,12 +5,7 @@ export function Asterisk({ className }: { className?: string }) {
   return (
     <span className={className ? `ast ${className}` : "ast"} aria-hidden="true">
       <svg viewBox="0 0 24 24">
-        <g
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-        >
+        <g fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
           <path d="M12 3.2 L12 20.8" />
           <path d="M4.4 7 L19.4 17.4" />
           <path d="M19.6 6.6 L4.6 17.2" />

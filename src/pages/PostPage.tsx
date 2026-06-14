@@ -1,9 +1,9 @@
+import { PostToc } from "#components/PostToc.js";
+import { Seo } from "#components/Seo.js";
+import { TagList } from "#components/TagList.js";
 import { getPostBySlug } from "#content.js";
 import { formatDate } from "#lib/time.js";
 import { Markdown } from "#markdown/index.js";
-import { Seo } from "#components/Seo.js";
-import { PostToc } from "#components/PostToc.js";
-import { TagList } from "#components/TagList.js";
 import { NotFoundPage } from "#pages/NotFoundPage.js";
 
 // 記事ページ。slug から記事を引き、mdast を <Markdown> で描画する。
@@ -27,9 +27,7 @@ export function PostPage({ slug }: { slug: string }) {
         <header className="post-header">
           <h1 className="post-title">{post.frontmatter.title}</h1>
           <p className="post-meta">
-            <time dateTime={post.frontmatter.date}>
-              {formatDate(post.frontmatter.date)}
-            </time>
+            <time dateTime={post.frontmatter.date}>{formatDate(post.frontmatter.date)}</time>
           </p>
           <TagList tags={post.frontmatter.tags} />
         </header>

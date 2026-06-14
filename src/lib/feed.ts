@@ -1,7 +1,7 @@
-import { parseAndRender } from "@ox-content/napi";
-import { getAllPosts, getAllTags } from "#content.js";
 import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "#constants.js";
+import { getAllPosts, getAllTags } from "#content.js";
 import { dateInTokyo, nowInTokyo, toRfc822 } from "#lib/time.js";
+import { parseAndRender } from "@ox-content/napi";
 
 // feed.xml（RSS 2.0）と sitemap.xml をビルド時に生成する。生成された HTML と
 // 同じ出力ディレクトリに置けるよう、build entry（src/app/build.ts）から呼ばれる。
@@ -68,9 +68,7 @@ export function buildRssFeed(): string {
       <title>${escapeXml(post.frontmatter.title)}</title>
       <link>${url}</link>
       <guid isPermaLink="true">${url}</guid>
-      <pubDate>${pubDate}</pubDate>${description}${content}${
-        categories ? `\n${categories}` : ""
-      }
+      <pubDate>${pubDate}</pubDate>${description}${content}${categories ? `\n${categories}` : ""}
     </item>`;
     })
     .join("\n");

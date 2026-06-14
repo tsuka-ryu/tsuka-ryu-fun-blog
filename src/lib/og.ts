@@ -1,10 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { render } from "takumi-js";
-import { getAllPosts } from "#content.js";
+
 import { SITE_TITLE } from "#constants.js";
-import { OgCard } from "#og/OgCard.js";
+import { getAllPosts } from "#content.js";
 import { formatDate } from "#lib/time.js";
+import { OgCard } from "#og/OgCard.js";
+import { render } from "takumi-js";
 
 // ビルド時の Open Graph 画像生成。記事ごとに 1200×630 の PNG を Takumi（Rust、
 // ヘッドレスブラウザ不要）で描画し、<outDir>/og/<slug>.png に書き出す。各記事の
@@ -40,10 +41,9 @@ export async function generateOgImages(outDir: string): Promise<void> {
     const batch = posts.slice(i, i + OG_CONCURRENCY);
     await Promise.all(
       batch.map(async (post) => {
-        const meta = [
-          ...(post.frontmatter.tags ?? []),
-          formatDate(post.frontmatter.date),
-        ].join("  ·  ");
+        const meta = [...(post.frontmatter.tags ?? []), formatDate(post.frontmatter.date)].join(
+          "  ·  ",
+        );
 
         // fonts を渡すと Takumi は既定フォントを読まず Noto Sans JP のみになる
         // （Latin/英数字は同フォントに含まれる）。絵文字はフォントではなく

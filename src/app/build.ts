@@ -1,9 +1,11 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { BuildEntryFunction } from "@funstack/static/server";
+
 import { buildRssFeed, buildSitemap } from "#lib/feed.js";
-import { buildSearchIndexJson, buildSearchRuntimeJs } from "#lib/search.js";
 import { generateOgImages } from "#lib/og.js";
+import { buildSearchIndexJson, buildSearchRuntimeJs } from "#lib/search.js";
+
+import type { BuildEntryFunction } from "@funstack/static/server";
 
 // カスタム build entry。既定の静的ビルド（build()）を走らせつつ、生成された HTML の
 // 隣に追加成果物を並列で書き出す: feed.xml(RSS) / sitemap.xml / 検索インデックス +

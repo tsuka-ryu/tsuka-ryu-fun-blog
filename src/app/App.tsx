@@ -1,15 +1,16 @@
-import type { RouteDefinition } from "@funstack/router";
-import { route } from "@funstack/router/server";
-import { defer } from "@funstack/static/server";
 import { ClientApp } from "#app/ClientApp.js";
 import { Layout } from "#components/Layout.js";
-import { HomePage } from "#pages/HomePage.js";
-import { PostPage } from "#pages/PostPage.js";
-import { AboutPage } from "#pages/AboutPage.js";
-import { TagsPage } from "#pages/TagsPage.js";
-import { TagPage } from "#pages/TagPage.js";
-import { NotFoundPage } from "#pages/NotFoundPage.js";
 import { getAllPosts, getAllTags } from "#content.js";
+import { AboutPage } from "#pages/AboutPage.js";
+import { HomePage } from "#pages/HomePage.js";
+import { NotFoundPage } from "#pages/NotFoundPage.js";
+import { PostPage } from "#pages/PostPage.js";
+import { TagPage } from "#pages/TagPage.js";
+import { TagsPage } from "#pages/TagsPage.js";
+import { route } from "@funstack/router/server";
+import { defer } from "@funstack/static/server";
+
+import type { RouteDefinition } from "@funstack/router";
 
 // content/posts/ 配下の Markdown 1 ファイルにつき 1 ルート。
 const postRoutes = getAllPosts().map((post) =>

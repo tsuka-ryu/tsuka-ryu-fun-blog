@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
 import { SITE_TITLE } from "#constants.js";
+
+import type { ReactNode } from "react";
 
 // 全ページ共通の HTML シェル（Server Component）。
 // <html>〜<body> を組み立て、children に各ページ本文が入る。
@@ -12,12 +13,7 @@ export default function Root({ children }: { children: ReactNode }) {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link
-          rel="alternate"
-          type="application/rss+xml"
-          title={SITE_TITLE}
-          href="/feed.xml"
-        />
+        <link rel="alternate" type="application/rss+xml" title={SITE_TITLE} href="/feed.xml" />
       </head>
       <body>{children}</body>
     </html>

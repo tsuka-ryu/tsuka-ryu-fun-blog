@@ -1,8 +1,8 @@
 {
   "name": "tsuka-ryu-funstack-blog",
   "version": "1.0.0",
-  "description": "A static tech blog built with FUNSTACK Static, FUNSTACK Router, and ox-content.",
   "private": true,
+  "description": "A static tech blog built with FUNSTACK Static, FUNSTACK Router, and ox-content.",
   "type": "module",
   "imports": {
     "#*": "./src/*"
@@ -13,12 +13,12 @@
     "preview": "vite preview --host",
     "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
-    "typecheck": "tsgo --noEmit"
-  },
-  "packageManager": "pnpm@11.6.0",
-  "engines": {
-    "node": "24.x",
-    "pnpm": ">=11.6.0"
+    "typecheck": "tsgo --noEmit",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix --fix-suggestions",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@fontsource/zen-kaku-gothic-new": "^5.2.7",
@@ -38,7 +38,16 @@
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "7.0.0-dev.20260612.1",
     "@vitejs/plugin-react": "^6.0.2",
+    "lefthook": "^2.1.9",
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
+    "oxlint-tsgolint": "^0.23.0",
     "takumi-js": "^1.8.3",
     "vite": "^8.0.16"
-  }
+  },
+  "engines": {
+    "node": "24.x",
+    "pnpm": ">=11.6.0"
+  },
+  "packageManager": "pnpm@11.6.0"
 }

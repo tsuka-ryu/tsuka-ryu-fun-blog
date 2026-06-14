@@ -13,8 +13,8 @@
      日本語が混ざる箇所だけ本文と同じゴシックにフォールバックする。 */
   --display: "Zen Kaku Gothic New", system-ui, sans-serif;
   --body: "Zen Kaku Gothic New", system-ui, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Zen Kaku Gothic New", monospace;
+  --mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Zen Kaku Gothic New", monospace;
 
   --max-width: 740px;
 
@@ -654,6 +654,13 @@ a.tag:hover .tag-count {
     align-items: start;
   }
 
+  /* 記事ページではレイアウトを目次のぶんだけ広げて中央寄せする。ヘッダーは全ページ共通
+     なので既定では本文(--max-width)に合わせており、このままだと記事ページだけ本文・目次の
+     左右端とヘッダーがずれる。記事ページのときだけヘッダーも同じ広い幅に揃える。 */
+  .layout:has(.post-layout) .header-inner {
+    max-width: calc(var(--max-width) + 16rem);
+  }
+
   /* 記事の中身（見出し・本文・フッター）を本文カラムに、目次を右カラムに振り分ける。
      目次は本文内にあるため、article 自身を display:contents にして子をグリッド項目化する。 */
   .post-page {
@@ -896,6 +903,26 @@ a.tag:hover .tag-count {
     border: none;
     background: none;
   }
+
+  /* 広い画面では sticky カラムに常時表示するので、閉じていても中身を見せて
+     開閉トグルを無効化する。details の閉状態は新旧 2 つの仕組みで隠されるため、
+     ::details-content（content-visibility）と直下要素（display）の両方を上書きする。 */
+  .post-toc::details-content {
+    content-visibility: visible;
+  }
+
+  .post-toc .post-toc-list {
+    display: block;
+  }
+
+  .post-toc-title {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .post-toc-title::before {
+    display: none;
+  }
 }
 
 /* sticky ヘッダーに見出しが隠れないよう、アンカージャンプ位置をずらす。 */
@@ -920,11 +947,7 @@ a.tag:hover .tag-count {
   z-index: 0;
   opacity: 0.6;
   pointer-events: none;
-  -webkit-mask-image: radial-gradient(
-    120% 100% at 28% 50%,
-    #000 25%,
-    transparent 72%
-  );
+  -webkit-mask-image: radial-gradient(120% 100% at 28% 50%, #000 25%, transparent 72%);
   mask-image: radial-gradient(120% 100% at 28% 50%, #000 25%, transparent 72%);
 }
 

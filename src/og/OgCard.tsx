@@ -26,9 +26,7 @@ export function OgCard({ siteName, title, meta }: OgCardProps) {
         fontFamily: "Noto Sans JP",
       }}
     >
-      <div style={{ display: "flex", color: "#a78bfa", fontSize: "34px" }}>
-        {siteName}
-      </div>
+      <div style={{ display: "flex", color: "#a78bfa", fontSize: "34px" }}>{siteName}</div>
       <div
         style={{
           display: "flex",
@@ -41,9 +39,7 @@ export function OgCard({ siteName, title, meta }: OgCardProps) {
       >
         {title}
       </div>
-      <div style={{ display: "flex", color: "#9198a1", fontSize: "28px" }}>
-        {meta ?? ""}
-      </div>
+      <div style={{ display: "flex", color: "#9198a1", fontSize: "28px" }}>{meta ?? ""}</div>
     </div>
   );
 }
