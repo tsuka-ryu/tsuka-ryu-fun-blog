@@ -3,8 +3,6 @@ import { formatDate } from "#lib/time.js";
 import { TagList } from "#components/TagList.js";
 
 // 記事のサマリーカード。ホームページとタグページで共有する。
-// 設計図では formatDate を lib/format から取っていたが、本リポジトリでは
-// 時刻処理を lib/time に集約しているためそちらを参照する。
 export function PostCard({ post }: { post: Post }) {
   return (
     <article className="post-card">

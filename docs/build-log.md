@@ -16,7 +16,7 @@
 | 3 | コンテンツ & Markdown レンダリング | ✅ 完了 |
 | 4 | lib（ユーティリティ & ビルド時生成） | ✅ 完了 |
 | 5 | コンポーネント | ✅ 完了 |
-| 6 | ページ | ⬜ 未着手 |
+| 6 | ページ | ✅ 完了 |
 | 7 | build entry | ⬜ 未着手 |
 | 8 | スタイル | ⬜ 未着手 |
 | 9 | サンプル記事 | ⬜ 未着手 |
@@ -429,3 +429,55 @@ subpath（`#*`）に統一。依存の末端（葉）から作り、各段階で
 - `Layout.tsx` — 変更なし（スキップリンクはユーザー判断で見送り）。
 - ヘッダー刷新（nav=Blog/Tags/About/RSS・Search 組み込み・ソーシャルアイコン）は一度検討
   （既存サイト tsuka-ryu.dev の構成・社内 URL を調査）したが、今回は実施しない方針に決定。
+
+### 2026-06-14 — フェーズ6: ページ（6ファイル）& App ルート結線
+
+設計図フェーズ6の 6 ページを `src/pages/` に作成。コメントは日本語、import は subpath
+（`#*`）に統一。依存の末端（NotFoundPage）から作り、各段階で tsgo green を維持。
+
+- `NotFoundPage.tsx` — 404。`noindex` で出力。PostPage / TagPage が記事・タグ未存在時の
+  フォールバックにも使う。
+- `HomePage.tsx` — サイト紹介 + `SearchBox` + 記事一覧（`PostCard`）。
+  **設計図の差分**: 設計図はタイトル/タグラインをハードコードしていたが、本リポジトリは
+  `constants.ts` に集約済みのため `SITE_TITLE` / `SITE_DESCRIPTION` を参照。
+- `PostPage.tsx` — slug から記事を引き `<Markdown root={post.mdast}>` で本文描画。
+  目次（`PostToc`）・タグ（`TagList`）・記事 OG（`type="article"` / `image=/og/<slug>.png`）。
+  **設計図の差分**: `formatDate` を `#lib/time.js` から取る（時刻処理は time.ts に集約済み）。
+- `AboutPage.tsx` — サイト説明 + Client Component の島デモ。
+  **設計図の差分**: 設計図は `Counter` を島にしていたが、本リポジトリは `ShaderGimmick`
+  （WebGL シェーダー）に差し替え済みのためそちらを使用。見出し下の文言もシェーダー前提に調整。
+- `TagsPage.tsx` — `/tags`。全タグと記事数の一覧（`getAllTags`）。
+- `TagPage.tsx` — `/tags/<slug>`。`getTagBySlug` で絞り込み、`PostCard` で一覧表示。
+- `src/app/App.tsx` — フェーズ2でコメントアウトしていたルート結線を有効化。`Layout` を親に
+  `/`・`/about`・`/tags`・タグ別・記事別・`/*`(404) を結線。`postRoutes` / `tagRoutes` は
+  content の frontmatter から動的生成し、各ページを `defer()` で独立 RSC ペイロード化。
+- `pnpm typecheck`（tsgo）exit 0。スタイル（`className`）はフェーズ8、サンプル記事は
+  フェーズ9で投入予定（現状 `content/posts/` は空なので記事・タグルートは 0 件）。
+
+### 2026-06-14 — フェーズ6 コードレビュー（1 ファイルずつ）& About を自己紹介に差し替え
+
+6 ページを 1 ファイルずつレビューし、合意した範囲で修正。各修正後 tsgo exit 0。
+
+- `NotFoundPage.tsx` — 変更なし。`noindex` 出力・`PostPage`/`TagPage` のフォールバック兼用を確認。
+- `TagsPage.tsx` — `tag-cloud` の `<ul>` に `aria-label="タグ一覧"` を付与（フェーズ5 の
+  `TagList`（`aria-label="タグ"`）と一貫させる）。
+- `TagPage.tsx` — 変更なし。`getTagBySlug` ヒット時 `posts` は必ず 1 件以上のため空分岐は不要、
+  と確認。
+- `HomePage.tsx` — 変更なし。`SITE_TITLE`/`SITE_DESCRIPTION` 参照・空状態の扱いを確認
+  （記事 0 件の空表示は任意・フェーズ9 で記事が入る前提のため見送り）。
+- `PostPage.tsx` — 「設計図では formatDate を lib/format から…」の経緯コメントを削除
+  （差分の経緯は本ログに記録済みでコード内は冗長）。`post-layout` のグリッドと `PostToc` が
+  `null` を返す場合の整合はフェーズ8（スタイル）の TODO として認識。
+- `AboutPage.tsx` — 経緯コメント削除に加え、**内容を既存ブログ tsuka-ryu's blog の About に
+  合わせて差し替え**。見出し `About` → `About me`、本文をフレームワーク説明から自己紹介 2 段落
+  （フロントエンドエンジニア / エコシステム・マネジメント・Rust・Haskell への関心）に変更。
+  「インタラクティブな島」節は s-blog の About に無いため削除。`Seo` の title/description も更新。
+  - シェーダー（`ShaderGimmick`）は s-blog 同様に本文より先へ配置。s-blog は全面背景
+    （`absolute inset-0`）＋テーマ連動色だが、本リポジトリは全面背景化を**フェーズ8**（CSS の
+    重ね合わせ）の TODO とし、色はテーマ機構未導入のため固定色のまま据え置き。
+- ついで対応: フェーズ5 の `PostCard.tsx` に残っていた同種の「設計図では…」経緯コメントも削除。
+
+残った論点はいずれもコード外の領域（記事 0 件の空表示・`post-layout` グリッド → フェーズ8、
+About 本文の追記 → 任意）。
+
+次回は **フェーズ7: build entry**（`src/build.ts`）から再開する。
