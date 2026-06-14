@@ -990,3 +990,17 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
   さらにキー名も変わっており、リスト形式の `onlyBuiltDependencies` ではなく **マップ形式の
   `allowBuilds: { lefthook: true }`** が正解だった（誤ると pnpm が承認待ちのスタブ行を毎回書き戻してくる）。
   単一パッケージのリポジトリでも `pnpm-workspace.yaml` を設定ファイルとして置く。
+
+### 2026-06-15 — favicon を追加（ブランドのアスタリスクを流用した SVG）
+
+タブ表示用のアイコンが未設定だった。新規にロゴを起こさず、ヘッダーのブランド名脇で使っている
+手描き風アスタリスク（`Asterisk.tsx`）の 3 ストロークをそのまま流用して見た目の一貫性を保つ。
+
+- **手段**: `public/favicon.svg` に紙色の角丸タイル＋琥珀のアスタリスクを置く。色は CSS 変数の
+  実値（`--paper` / `--accent`）をベタ書きし、SVG 内の `@media (prefers-color-scheme: dark)` で
+  ダーク時の紙・琥珀に差し替える。`Root.tsx` の共通 `<head>` に `rel="icon"` と、ブラウザ UI 用の
+  `theme-color`（light/dark 2 枚）を追加。
+- **SVG 単独にした理由（却下した代替）**: `.ico` や複数サイズ PNG は用意しない。Safari も 16.4 以降は
+  SVG favicon に対応し、主要ブラウザは SVG 1 枚で足りる。アイコン生成のためにラスタライザや
+  ビルド工程を増やすほうがこの構成の軽さに合わない。iOS ホーム画面用の apple-touch-icon（PNG 180px）
+  だけは SVG では代替できないが、個人ブログでは優先度が低いため必要になってから足す。

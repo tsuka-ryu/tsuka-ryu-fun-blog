@@ -13,6 +13,11 @@ export default function Root({ children }: { children: ReactNode }) {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        {/* favicon はブランドマーク（琥珀のアスタリスク）の SVG。タブ周りの色を
+            OS のライト/ダークに合わせるため theme-color も両方出す。 */}
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf6ec" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14110c" />
         <link rel="alternate" type="application/rss+xml" title={SITE_TITLE} href="/feed.xml" />
       </head>
       <body>{children}</body>
