@@ -1,3 +1,4 @@
+import { parseAndRender } from "@ox-content/napi";
 import { getAllPosts, getAllTags } from "#content.js";
 import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "#constants.js";
 import { dateInTokyo, nowInTokyo, toRfc822 } from "#lib/time.js";
@@ -23,6 +24,29 @@ function absoluteUrl(path: string): string {
   return new URL(path, SITE_URL).toString();
 }
 
+// 本文 Markdown を HTML 文字列へ描画する（RSS の content:encoded 用）。ox-content の
+// parseAndRender を使う素の HTML で、shiki ハイライトは通らないがリーダー表示には十分。
+// RSS は外部リーダーで読まれるため、サイト相対 URL（/...）は絶対 URL に直す。
+function renderContentHtml(body: string): string {
+  const { html, errors } = parseAndRender(body, {
+    gfm: true,
+    tables: true,
+    taskLists: true,
+    strikethrough: true,
+    autolinks: true,
+  });
+  if (errors.length > 0) {
+    throw new Error(`[feed] 本文の HTML 描画に失敗しました:\n${errors.join("\n")}`);
+  }
+  // href="/..." / src="/..." をオリジン付きに（プロトコル相対 // は対象外）。
+  return html.replace(/(href|src)="\/(?!\/)/g, `$1="${SITE_URL}/`);
+}
+
+// CDATA セクションに安全に埋め込めるよう、本文中の `]]>` を分割する。
+function cdata(value: string): string {
+  return `<![CDATA[${value.replace(/]]>/g, "]]]]><![CDATA[>")}]]>`;
+}
+
 // 全記事を新しい順に並べた RSS 2.0 フィードを組み立てる。
 export function buildRssFeed(): string {
   const lastBuildDate = toRfc822(nowInTokyo());
@@ -37,12 +61,14 @@ export function buildRssFeed(): string {
       const description = post.frontmatter.description
         ? `\n      <description>${escapeXml(post.frontmatter.description)}</description>`
         : "";
+      // 記事全文を HTML で埋め込む（content:encoded）。リーダーで全文が読める。
+      const content = `\n      <content:encoded>${cdata(renderContentHtml(post.body))}</content:encoded>`;
 
       return `    <item>
       <title>${escapeXml(post.frontmatter.title)}</title>
       <link>${url}</link>
       <guid isPermaLink="true">${url}</guid>
-      <pubDate>${pubDate}</pubDate>${description}${
+      <pubDate>${pubDate}</pubDate>${description}${content}${
         categories ? `\n${categories}` : ""
       }
     </item>`;
@@ -50,7 +76,7 @@ export function buildRssFeed(): string {
     .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${escapeXml(SITE_TITLE)}</title>
     <link>${absoluteUrl("/")}</link>

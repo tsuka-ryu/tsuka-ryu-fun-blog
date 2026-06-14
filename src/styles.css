@@ -88,6 +88,7 @@ a:hover {
 
 .nav {
   display: flex;
+  align-items: center;
   gap: 1.25rem;
 }
 
@@ -99,6 +100,29 @@ a:hover {
 .nav-link.active {
   color: var(--text);
   font-weight: 600;
+}
+
+/* ソーシャルアイコン群。テキストナビの右隣に並べる。 */
+.nav-social {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding-left: 0.25rem;
+}
+
+.social-link {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.social-link svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.social-link:hover {
+  color: var(--text);
 }
 
 /* メイン */

@@ -689,5 +689,39 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
   見送る。実連続空行（rss-feature の2箇所）の手直しも、表示抑制とセットで行う想定のため保留。
 - 将来 ox-content を直す際の最小再現ケースは上記。
 
+### 2026-06-14 — 既存ブログの機能調査 & 3機能の取り込み（フェーズ13 前）
+
+フェーズ13（デザイン見直し）の前に、移行元 tsuka-ryu's blog（Next.js 16 + Fumadocs）の
+機能を一通り調査し、funstack ブログに無い機能を棚卸しした（テーマ切替・ヒーロー全面シェーダー・
+アニメ TOC・ソーシャルアイコン・記事別 RSS・docs・アナリティクス・タグスラッグ英字化 等）。
+このうちユーザー判断で **#5 ソーシャルアイコン / #9 記事別 RSS / #12 タグスラッグ英字化** の
+3つを取り込んだ。
+
+- **#12 タグスラッグの英字化** — `transliteration` を追加し、`content.ts` の `tagSlug` を
+  `slugify(transliterate(tag))` に変更。日本語タグを romaji 化してから既存 `slugify`
+  （toc.ts）でクリーンアップし、ASCII の URL セーフなスラッグにする（例「RSSフィード」→
+  `rsshuido`、「Next.js」→ `nextjs`、「ブログ盆栽」→ `burogupen-zai`）。漢字は transliteration の
+  仕様で中国語読み（pinyin）になるが、s-blog と同挙動・URL セーフで問題なし。見出しアンカー
+  （extractToc）は日本語を残す方針なので従来の slugify のまま（タグだけ transliterate を噛ます）。
+  - 出力 `dist/public/tags/*.html` とサイト内リンク・sitemap・feed のタグ URL がすべて英字
+    スラッグになったことを確認（日本語スラッグの残存ゼロ）。既存サイトは未公開のためリダイレクトは不要。
+- **#9 記事別 RSS → feed.xml 全文埋め込み**（ユーザー選択で s-blog の「装飾なし全文ページ」
+  方式ではなく標準的な全文 RSS を採用）— `content.ts` の `Post` に `body`（frontmatter を
+  除いた本文 Markdown）を追加。`lib/feed.ts` で `@ox-content/napi` の `parseAndRender` により
+  本文を HTML 化し、各 item に `<content:encoded><![CDATA[...]]></content:encoded>` を追加。
+  `<rss>` に `xmlns:content` を宣言。RSS は外部リーダーで読まれるため、`href`/`src` の
+  サイト相対 URL（/...）を `SITE_URL` 付きの絶対 URL に変換（プロトコル相対 // は対象外）。
+  CDATA 内の `]]>` は分割してエスケープ。shiki ハイライトは通らない素の HTML だが全文閲覧には十分。
+  - feed.xml が整形式 XML（xmllint OK）で、全11記事に content:encoded が入り、画像 URL が
+    `https://tsuka-ryu.dev/blog/...` に絶対化されることを確認。
+- **#5 ソーシャルアイコン & ナビ拡張** — `constants.ts` に `SOCIAL_LINKS`（GitHub /
+  X / Zenn の URL）を追加。`Header.tsx` にテキストナビ `Tags`（Home が記事一覧を兼ねるため
+  Blog は追加せず Tags のみ拡張）と、GitHub / X / Zenn のインライン SVG アイコンリンク
+  （`target="_blank"` / `rel="noopener noreferrer"` / `aria-label`）を追加。`styles.css` に
+  `.nav-social` / `.social-link`（18px アイコン・hover）を追加。フェーズ5 レビューで一度見送った
+  ソーシャルアイコンを、今回ユーザー判断で導入。
+- **依存追加**: `transliteration@2.6.1`（dependencies）。
+- `pnpm typecheck`（tsgo）exit 0 / `pnpm build` exit 0。
+
 次回は **フェーズ13: サイトデザインの見直し**（テンプレ然とした見た目を tsuka-ryu.dev 寄りに
 調整等）から再開する。

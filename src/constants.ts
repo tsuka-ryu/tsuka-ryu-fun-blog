@@ -14,3 +14,10 @@ export const SITE_URL = "https://tsuka-ryu.dev";
 // 必ずこの固定 TZ で時刻を扱い、環境依存（システム TZ）でブレないようにする。
 // 時刻処理は src/lib/time.ts に集約し、Temporal.Now を裸で呼ばない。
 export const SITE_TIME_ZONE = "Asia/Tokyo";
+
+/** ヘッダーに並べるソーシャルリンク。アイコンは Header 側で key により出し分ける。 */
+export const SOCIAL_LINKS = [
+  { key: "github", label: "GitHub", url: "https://github.com/tsuka-ryu" },
+  { key: "x", label: "X (Twitter)", url: "https://x.com/tsuka_ryu" },
+  { key: "zenn", label: "Zenn", url: "https://zenn.dev/sushin_ya" },
+] as const;

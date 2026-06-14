@@ -5,6 +5,7 @@ import {
   type JsMarkdownLintDiagnostic,
   type JsMarkdownLintOptions,
 } from "@ox-content/napi";
+import { transliterate } from "transliteration";
 import type { MdastNode } from "#markdown/types.js";
 import { extractToc, slugify, type TocEntry } from "#lib/toc.js";
 
@@ -23,6 +24,8 @@ export interface Post {
   mdast: MdastNode;
   /** 本文から抽出した目次（h2〜h3）。 */
   toc: TocEntry[];
+  /** frontmatter を除いた本文 Markdown。RSS の全文（content:encoded）生成に使う。 */
+  body: string;
 }
 
 // 全 Markdown ファイルをビルド時に生文字列として読み込む。これはサーバー
@@ -169,6 +172,7 @@ const posts: Post[] = Object.entries(rawPosts)
       frontmatter: assertFrontmatter(prepared.frontmatter, path),
       mdast,
       toc,
+      body: prepared.content,
     };
   })
   // 新しい順。
@@ -193,9 +197,15 @@ export interface TagInfo {
   count: number;
 }
 
-/** frontmatter のタグを URL スラッグに変換する。 */
+/**
+ * frontmatter のタグを URL スラッグに変換する。
+ * transliterate で日本語を romaji 化してから slugify でクリーンアップし、
+ * ASCII の URL セーフなスラッグにする（例「RSSフィード」→ rsshuido、
+ * 「Next.js」→ nextjs）。見出しのアンカー（extractToc）は日本語を残す方針なので
+ * slugify を直接使い、タグだけ transliterate を噛ませてここで分岐する。
+ */
 export function tagSlug(tag: string): string {
-  return slugify(tag);
+  return slugify(transliterate(tag));
 }
 
 // ビルド時に記事をタグスラッグでグループ化する。同じスラッグに畳まれる
