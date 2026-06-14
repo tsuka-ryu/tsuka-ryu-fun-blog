@@ -20,7 +20,7 @@
 | 7 | build entry | ✅ 完了 |
 | 8 | スタイル | ✅ 完了 |
 | 9 | サンプル記事 | ✅ 完了 |
-| 10 | ビルドと配信 | ⬜ 未着手 |
+| 10 | ビルドと配信 | ✅ 完了 |
 | 11 | README 追加 | ⬜ 未着手 |
 | 12 | 現行サイトの記事を移行 | ⬜ 未着手 |
 | 13 | サイトデザインの見直し | ⬜ 未着手 |
@@ -567,3 +567,41 @@ About 本文の追記 → 任意）。
   テンプレ本文も先頭に `# title` を持つため h1 が二重になる。実記事差し替え時に解消想定。
 
 次回は **フェーズ10: ビルドと配信**（preview / デプロイ）から再開する。
+
+### 2026-06-14 — フェーズ10: ビルドと配信（クリーンビルド検証 & preview 確認）
+
+設計図フェーズ10の「ビルドと配信」「動作確認チェックリスト」を本リポジトリで一通り実施。
+コード変更は無し（検証フェーズ）。出力先は設計図どおり `dist/public/`
+（`@funstack/static` の `publicOutDir` 既定値）。
+
+- **クリーンビルド** — `rm -rf dist && pnpm build` exit 0。`dist/public/` に HTML
+  （`index` / `about` / `tags` / `404` / `posts/*` 3本 / `tags/*` 7タグ）、追加成果物
+  （`feed.xml` / `sitemap.xml` / `search-index.json` / `search.js` / `og/*.png` 3枚）、
+  RSC ペイロード（`funstack__/`）一式が生成されることを確認。
+- **動作確認チェックリスト**（設計図準拠）:
+  - HTML / 追加成果物 / OG 画像の存在 … OK。
+  - shiki ハイライト … 設計図は `hello-funstack.html` で `class="shiki"` を grep するが、
+    本リポジトリの `hello-funstack` はコードブロックを持たないため 0 件。コードを含む
+    `markdown-showcase.html`（53 箇所）/ `rsc-and-defer.html`（55 箇所）で正常にハイライト
+    されていることを確認（チェック対象ファイルの差異であって不具合ではない）。
+  - TOC アンカー一致 … `markdown-showcase.html` の `href="#…"` と `<h2 id="…">` が日本語
+    見出しスラッグで完全一致。
+  - **ネイティブ依存リーク検査** … `grep -rlE "ox-content|takumi|codeToTokens"
+    dist/public/assets/*.js` で 0 ヒット（`OK`）。ox-content / takumi / shiki が
+    クライアント JS に漏れていないことを確認。
+- **本番 URL** — 設計図は「デプロイ前に `lib/site.ts` の `url` を本番 URL に」と注意するが、
+  本リポジトリは `src/constants.ts` の `SITE_URL = "https://tsuka-ryu.dev"` に集約済み
+  （フェーズ4）。`dist/public/` 全体に `example.com` の残存なし、`feed.xml` / `sitemap.xml`
+  の絶対 URL が `https://tsuka-ryu.dev/...` で出力されることを確認。
+- **配信確認** — `pnpm preview`（`vite preview`）は `dist/public/` を配信するが、ローカルでは
+  `/` → `index.html` のディレクトリ index 解決を行わない（`/` は 404、`/index.html` は 200、
+  `/feed.xml` 等の実ファイルは 200）。本番の静的ホスト（Netlify / Vercel / Cloudflare Pages /
+  GitHub Pages 等）は `/` → index.html を解決するため実害なし。デプロイ可能性の最終確認として
+  ディレクトリ index を解決する標準静的サーバ（`python3 -m http.server`）で
+  `dist/public/` を配信し、`/`（200・`<title>tsuka-ryu fun blog</title>`）/ `posts/*.html` /
+  `about.html` / `tags.html` / `feed.xml` / `og/*.png` がすべて 200 で正しい Content-Type で
+  返ることを確認。
+- 結論: `dist/public/` をそのまま任意の静的ホスティングへデプロイ可能。`pnpm typecheck`
+  （tsgo）も exit 0。
+
+次回は **フェーズ11: README 追加**（プロジェクト直下に概要・構成・開発/ビルド手順）から再開する。
