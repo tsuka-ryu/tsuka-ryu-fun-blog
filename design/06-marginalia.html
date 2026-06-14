@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>06 Marginalia — tsuka-ryu fun blog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* 06 Marginalia — 01 Glitch Stack と 05 Playground の中間。
+   遊び心は「叫ばない」方向へ。グリッチ＝衝撃演出はやめ、手描きアスタリスク（✳）を
+   ブランドマーク兼セクション区切り（本の「* * *」）に使う＝構造でありウィット。
+   ヴェイユ/ブコウスキー/シオラン/ヴォネガットの乾いたユーモアと飾らなさを下敷きに、
+   余白・控えめなホバー・余白の書き込み（marginalia）で落ち着いた遊びを出す。 */
+:root {
+  --paper: #FAF6EC; --ink: #1C1813; --soft: #837A6C; --line: #E7DECF;
+  --accent: #C2540C;   /* くすませた琥珀（01 のヒート由来だが落ち着かせる） */
+  --ink2: #46557A;     /* 万年筆インク色。リンクと余白書き込みに使う冷たい差し色 */
+  --display: "Bricolage Grotesque", system-ui, sans-serif;
+  --body: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --max: 740px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #14110C; --ink: #EDE6D8; --soft: #968C7B; --line: #2A2419;
+    --accent: #E8833C; --ink2: #8FA0C8; }
+}
+* { box-sizing: border-box; }
+/* 本文は 17px 基準。日本語の可読性のため行間はやや広めに。
+   背景は密度を上げた薄いドットグリッド（点描）。瞬きはなし。 */
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--body); font-size: 1.0625rem; line-height: 1.7;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--line) 65%, transparent) 1px, transparent 1px
+  );
+  background-size: 1.05rem 1.05rem;
+}
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 1.75rem; }
+
+/* 手描き風アスタリスク。少しだけ歪ませて「機械的でない」遊びを出す。 */
+.ast { display: inline-block; width: 0.8em; height: 0.8em; vertical-align: -0.05em; color: var(--accent); }
+.ast svg { width: 100%; height: 100%; display: block; }
+
+.header { padding: 2.25rem 0 0; }
+.header-inner { max-width: var(--max); margin: 0 auto; padding: 0 1.75rem; display: flex; justify-content: space-between; align-items: baseline; }
+.brand { font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; display: inline-flex; align-items: baseline; gap: 0.1em; }
+.brand .ast { transition: transform 0.4s ease; }
+.brand:hover .ast { transform: rotate(120deg); }
+.nav { display: flex; gap: 1.4rem; font-family: var(--mono); font-size: 0.85rem; color: var(--soft); }
+.nav a:hover { color: var(--accent); }
+
+.hero { padding: 3rem 0 2rem; position: relative; }
+.eyebrow { font-family: var(--body); font-style: italic; font-size: 1.1rem; color: var(--soft); margin: 0 0 1.5rem; }
+.hero h1 {
+  font-family: var(--display); font-weight: 600;
+  font-size: clamp(3rem, 8vw, 4.4rem); letter-spacing: -0.025em; line-height: 1; margin: 0 0 1rem;
+  display: inline-flex; align-items: baseline; gap: 0.12em;
+}
+.hero h1 .ast { width: 0.5em; height: 0.5em; align-self: flex-start; margin-top: 0.15em; }
+
+/* 名前のホバーグリッチ。常時は静かで、触れた瞬間だけ短くスライス＋二色ズレが走る。 */
+.glitch { position: relative; display: inline-block; color: var(--ink); }
+.glitch::before, .glitch::after {
+  content: attr(data-text); position: absolute; left: 0; top: 0;
+  pointer-events: none; opacity: 0; mix-blend-mode: multiply;
+}
+.glitch::before { color: var(--ink2); }
+.glitch::after { color: var(--accent); }
+@media (prefers-color-scheme: dark) {
+  .glitch::before, .glitch::after { mix-blend-mode: screen; }
+}
+.hero h1:hover .glitch::before { opacity: 1; animation: glitch-b 0.42s steps(2, jump-none) infinite; }
+.hero h1:hover .glitch::after { opacity: 1; animation: glitch-a 0.42s steps(2, jump-none) infinite; }
+@keyframes glitch-b {
+  0%   { transform: translate(0,0);      clip-path: inset(0 0 72% 0); }
+  25%  { transform: translate(-3px,1px); clip-path: inset(38% 0 30% 0); }
+  50%  { transform: translate(2px,-1px); clip-path: inset(8% 0 60% 0); }
+  75%  { transform: translate(-2px,0);   clip-path: inset(62% 0 12% 0); }
+  100% { transform: translate(0,0);      clip-path: inset(0 0 72% 0); }
+}
+@keyframes glitch-a {
+  0%   { transform: translate(0,0);      clip-path: inset(60% 0 6% 0); }
+  25%  { transform: translate(3px,-1px); clip-path: inset(15% 0 55% 0); }
+  50%  { transform: translate(-2px,1px); clip-path: inset(50% 0 22% 0); }
+  75%  { transform: translate(2px,0);    clip-path: inset(28% 0 44% 0); }
+  100% { transform: translate(0,0);      clip-path: inset(60% 0 6% 0); }
+}
+.hero p { color: var(--ink); margin: 0; font-size: 1.2rem; line-height: 1.6; }
+/* マージン書き込みは本文に紛れて読みにくいので、独立した一行に落とす。 */
+.hero p .note { display: block; margin-top: 0.5rem; color: var(--ink2); font-family: var(--mono); font-size: 0.9rem; }
+
+/* 本の「* * *」シーン区切り。セクションの頭と記事の間に置く＝構造を兼ねた装飾。 */
+.rule { display: flex; align-items: center; justify-content: center; gap: 1.2rem; color: var(--accent); margin: 1.75rem 0; }
+.rule .ast { width: 0.7rem; height: 0.7rem; }
+.rule .ast:nth-child(2) { transform: scale(1.3); }
+
+.list { margin: 0 0 3rem; }
+/* 日付は本文の左の余白（マージン）に逃がす＝marginalia。本文は 1 列に集約。 */
+/* 日付列は内容ぶんだけに縮め（max-content）、本文との間隔を詰める。 */
+.entry { position: relative; display: grid; grid-template-columns: max-content 1fr; column-gap: 1.25rem; }
+.entry .when { font-family: var(--mono); font-size: 0.78rem; color: var(--soft); text-align: left; padding-top: 0.5rem; line-height: 1.5; white-space: nowrap; }
+.entry h3 { font-family: var(--display); font-weight: 600; font-size: 1.6rem; letter-spacing: -0.01em; line-height: 1.35; margin: 0 0 0.4rem; transition: color 0.16s; }
+.entry:hover h3 { color: var(--accent); }
+.entry p { margin: 0 0 0.7rem; color: var(--soft); font-size: 1.05rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 1rem; font-family: var(--mono); font-size: 0.82rem; color: var(--soft); }
+.tags a { color: var(--soft); }
+.tags a::before { content: "#"; color: var(--ink2); }
+.tags a:hover { color: var(--accent); }
+/* 記事の間は本のシーン区切りで分ける（罫線ではなく余白＋✳）。 */
+.entry + .entry { margin-top: 2.5rem; }
+.entry + .entry::before {
+  content: "✳"; position: absolute; top: -1.55rem; left: 50%; transform: translateX(-50%);
+  color: var(--line); font-size: 0.85rem;
+}
+/* 狭い画面では日付を本文の上に戻す。 */
+@media (max-width: 640px) {
+  .entry { grid-template-columns: 1fr; }
+  .entry .when { text-align: left; padding-top: 0; margin-bottom: 0.4rem; }
+}
+
+.footer { padding: 1.5rem 0 4rem; font-family: var(--mono); font-size: 0.76rem; color: var(--soft); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+.footer .soit { color: var(--ink2); font-style: italic; font-family: var(--body); }
+
+@media (prefers-reduced-motion: reduce) {
+  .brand:hover .ast { transform: none; }
+  .hero h1:hover .glitch::before, .hero h1:hover .glitch::after { animation: none; opacity: 0; }
+}
+</style>
+
+<!-- 手描きアスタリスクの定義（使い回す） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ast" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+      <path d="M12 3.2 L12 20.8" />
+      <path d="M4.4 7 L19.4 17.4" />
+      <path d="M19.6 6.6 L4.6 17.2" />
+    </g>
+  </symbol>
+</svg>
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a class="brand" href="#">tsuka-ryu<span class="ast"><svg><use href="#ast"/></svg></span></a>
+    <nav class="nav"><a href="#">tags</a><a href="#">about</a><a href="#">rss</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1><span class="glitch" data-text="tsuka-ryu">tsuka-ryu</span><span class="ast"><svg><use href="#ast"/></svg></span></h1>
+    <p>キーボードを叩く、何かが壊れる。</p>
+  </section>
+
+  <div class="rule">
+    <span class="ast"><svg><use href="#ast"/></svg></span>
+    <span class="ast"><svg><use href="#ast"/></svg></span>
+    <span class="ast"><svg><use href="#ast"/></svg></span>
+  </div>
+
+  <section class="list">
+    <article class="entry">
+      <span class="when">2026.06.07</span>
+      <div class="body">
+        <a href="#"><h3>Pratt Parser についてのメモ</h3></a>
+        <p>Pratt Parser についてメモします。</p>
+        <div class="tags"><a href="#">コンパイラ</a><a href="#">パーサー</a><a href="#">oxc</a></div>
+      </div>
+    </article>
+    <article class="entry">
+      <span class="when">2026.05.09</span>
+      <div class="body">
+        <a href="#"><h3>GW 振り返り</h3></a>
+        <p>GW にやったことを振り返ります。</p>
+        <div class="tags"><a href="#">雑記</a><a href="#">コンパイラ</a><a href="#">型理論</a></div>
+      </div>
+    </article>
+    <article class="entry">
+      <span class="when">2026.05.03</span>
+      <div class="body">
+        <a href="#"><h3>コンパイラ周りの勉強がしたくて</h3></a>
+        <p>コンパイラ周りの勉強がしたくての話。</p>
+        <div class="tags"><a href="#">雑記</a><a href="#">コンパイラ</a></div>
+      </div>
+    </article>
+    <article class="entry">
+      <span class="when">2026.03.29</span>
+      <div class="body">
+        <a href="#"><h3>2026 年 3 月の技術メモ</h3></a>
+        <p>2026 年 3 月に気になった技術的なトピックのメモ。</p>
+        <div class="tags"><a href="#">振り返り</a><a href="#">雑記</a></div>
+      </div>
+    </article>
+    <article class="entry">
+      <span class="when">2026.02.11</span>
+      <div class="body">
+        <a href="#"><h3>タグ機能を追加</h3></a>
+        <p>タグ機能を追加したのでメモ。</p>
+        <div class="tags"><a href="#">ブログ盆栽</a><a href="#">タグ</a></div>
+      </div>
+    </article>
+  </section>
+</main>
+
+<footer class="wrap footer">
+  <span>© 2026 tsuka-ryu — built with FUNSTACK</span>
+  <span class="soit">——そういうものだ。</span>
+</footer>
+</body>
+</html>

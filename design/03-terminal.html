@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>03 Terminal — tsuka-ryu fun blog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+/* 03 Terminal — ブログを 1 つのシェルセッションとして見せる振り切り。
+   アシッド緑×黒の定番は避け、温かい CRT 琥珀＋差し色シアンにする。
+   構造は ls / tree のツリー記号（│ ├ └ ─）で表す＝構造が情報。 */
+:root {
+  --bg: #14110B; --panel: #1B1710; --bar: #241F16;
+  --fg: #E9DFC8; --amber: #F0B454; --dim: #8A7C5E; --cyan: #6FE3D2; --line: #2E2718;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --jp: "Zen Kaku Gothic New", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: var(--mono); font-size: 14px; line-height: 1.75;
+  padding: 2.5rem 1.25rem 4rem;
+}
+/* ごく薄いスキャンライン（CRT）。点滅はさせない。 */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.16) 2px 3px);
+  opacity: 0.35;
+}
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.window { max-width: 820px; margin: 0 auto; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.bar { background: var(--bar); padding: 0.55rem 0.85rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid var(--line); }
+.dot { width: 11px; height: 11px; border-radius: 50%; }
+.dot.r { background: #E06A5A; } .dot.y { background: #E0B14A; } .dot.g { background: #69C36B; }
+.bar .title { margin-left: 0.6rem; color: var(--dim); font-size: 12px; }
+.screen { background: var(--panel); padding: 1.5rem 1.4rem 2rem; }
+
+.prompt { color: var(--dim); }
+.prompt .u { color: var(--amber); }
+.prompt .p { color: var(--cyan); }
+.cmd { color: var(--fg); }
+.cursor { display: inline-block; width: 8px; height: 1.1em; background: var(--amber); vertical-align: -2px; margin-left: 2px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+
+.banner { color: var(--amber); white-space: pre; line-height: 1.1; margin: 0.75rem 0 0.25rem; font-weight: 700; font-size: clamp(10px, 2.6vw, 15px); }
+.sub { color: var(--dim); margin: 0 0 1.75rem; }
+.sub b { color: var(--fg); font-weight: 500; }
+
+.tree { margin: 0.5rem 0 1.5rem; }
+.row { display: grid; grid-template-columns: auto 6.5rem 1fr; gap: 0.75rem; padding: 0.35rem 0; align-items: baseline; }
+.row:hover { background: rgba(240,180,84,0.06); }
+.branch { color: var(--line); white-space: pre; }
+.row:hover .branch { color: var(--amber); }
+.date { color: var(--dim); }
+.title-jp { font-family: var(--jp); font-weight: 500; color: var(--fg); }
+.row:hover .title-jp { color: var(--amber); }
+.tags { color: var(--dim); }
+.tags .t { color: var(--cyan); }
+.desc { grid-column: 3; color: var(--dim); font-size: 12px; margin-top: -2px; }
+
+.foot { color: var(--dim); margin-top: 1.75rem; border-top: 1px solid var(--line); padding-top: 1rem; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="bar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">tsuka-ryu@dev — zsh — 82×30</span>
+  </div>
+  <div class="screen">
+    <div class="prompt"><span class="u">tsuka-ryu</span>@<span class="p">dev</span> ~ % <span class="cmd">whoami</span></div>
+    <pre class="banner"> _              _
+| |_ ___ _   _| | ____ _      _ __ _   _ _   _
+| __/ __| | | | |/ / _` |____| '__| | | | | | |
+| |_\__ \ |_| |   < (_| |____| |  | |_| | |_| |
+ \__|___/\__,_|_|\_\__,_|    |_|   \__, |\__,_|
+                                   |___/       </pre>
+    <p class="sub">コンパイラと型と雑記の開発ログ。<b>フロントエンドと、その下のレイヤーの話。</b></p>
+
+    <div class="prompt"><span class="u">tsuka-ryu</span>@<span class="p">dev</span> ~ % <span class="cmd">ls -t posts/</span><span class="cursor"></span></div>
+    <div class="tree">
+      <div class="row">
+        <span class="branch">├─</span><span class="date">2026-06-07</span>
+        <span><a href="#" class="title-jp">Pratt Parser についてのメモ</a>
+          <span class="tags">[<span class="t">コンパイラ</span> <span class="t">パーサー</span> <span class="t">oxc</span>]</span>
+          <span class="desc">Pratt Parser についてメモします。</span></span>
+      </div>
+      <div class="row">
+        <span class="branch">├─</span><span class="date">2026-05-09</span>
+        <span><a href="#" class="title-jp">GW 振り返り</a>
+          <span class="tags">[<span class="t">雑記</span> <span class="t">コンパイラ</span> <span class="t">型理論</span>]</span>
+          <span class="desc">GW にやったことを振り返ります。</span></span>
+      </div>
+      <div class="row">
+        <span class="branch">├─</span><span class="date">2026-05-03</span>
+        <span><a href="#" class="title-jp">コンパイラ周りの勉強がしたくて</a>
+          <span class="tags">[<span class="t">雑記</span> <span class="t">コンパイラ</span>]</span>
+          <span class="desc">コンパイラ周りの勉強がしたくての話。</span></span>
+      </div>
+      <div class="row">
+        <span class="branch">├─</span><span class="date">2026-03-29</span>
+        <span><a href="#" class="title-jp">2026 年 3 月の技術メモ</a>
+          <span class="tags">[<span class="t">振り返り</span> <span class="t">雑記</span>]</span>
+          <span class="desc">2026 年 3 月に気になった技術的なトピックのメモ。</span></span>
+      </div>
+      <div class="row">
+        <span class="branch">└─</span><span class="date">2026-02-11</span>
+        <span><a href="#" class="title-jp">タグ機能を追加</a>
+          <span class="tags">[<span class="t">ブログ盆栽</span> <span class="t">タグ</span>]</span>
+          <span class="desc">タグ機能を追加したのでメモ。</span></span>
+      </div>
+    </div>
+
+    <div class="foot">5 entries · built with FUNSTACK · © 2026 tsuka-ryu</div>
+  </div>
+</div>
+</body>
+</html>
