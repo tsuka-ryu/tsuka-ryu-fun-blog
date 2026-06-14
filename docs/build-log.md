@@ -22,7 +22,7 @@
 | 9 | サンプル記事 | ✅ 完了 |
 | 10 | ビルドと配信 | ✅ 完了 |
 | 11 | README 追加 | ✅ 完了 |
-| 12 | 現行サイトの記事を移行 | ⬜ 未着手 |
+| 12 | 現行サイトの記事を移行 | ✅ 完了 |
 | 13 | サイトデザインの見直し | ⬜ 未着手 |
 
 > フェーズ 11 以降は設計図（build-from-scratch.md）の範囲外で、本リポジトリ独自の追加フェーズ。
@@ -633,3 +633,44 @@ About 本文の追記 → 任意）。
 
 次回は **フェーズ12: 現行サイトの記事を移行**（実記事取り込み + strict lint 誤検知対応）から
 再開する。
+
+### 2026-06-14 — フェーズ12: 現行サイトの記事を移行（実記事11本 + lint 誤検知の本文修正）
+
+フェーズ9 で「別途」としていた、既存ブログ tsuka-ryu's blog（`tsuka-ryu-s-blog`）の実記事の
+移行を実施。サンプルテンプレ3本を実記事11本に置き換えた。
+
+- **移行元** — `tsuka-ryu-s-blog/content/blog/*.mdx`（12本中、テスト用 `jp-test.mdx` を除く
+  11本）。変換スクリプトで以下を機械的に処理し `content/posts/<slug>.md` に出力:
+  - `.mdx` → `.md`、ファイル名をそのままスラッグに（日付プレフィックス付き、s-blog の
+    パーマリンクと一致）。
+  - frontmatter の `author:` 行を除去、`date` を `YYYY-MM-DD` に切り詰め（元は時刻・TZ 付き）。
+    title / description / tags は維持。
+  - 本文中の `<Mdx ... />`（1箇所）はコードフェンス内のテキストなので変換不要と確認。
+- **画像** — 実画像参照は `og-image-example.webp` 1枚のみ（絶対パス `/blog/...`、`SAFE_URL`
+  allowlist 通過）。`public/blog/` にコピー。他の `/blog/...` はリンクかコード内。
+- **strict lint の誤検知を本文修正で解消** — ox-content の lint で 31 件の warning が出た。
+  内訳と対応:
+  - `repeated-word` 16件 — **すべて誤検知**。ox-content のトークナイザが CJK を分割できず、
+    間に日本語を挟んだ別々の英単語（例「vercelのsatoriと…過去にsatoriを」「PART 2…PART 6」）を
+    「隣接した重複」と誤判定する。当初はルール無効化を提案したが、ユーザー判断で**記事本文を
+    書き換えて**解消する方針に（自分のブログなので内容修正可）。語を代名詞・類語・別表記に
+    置換（Go/Zed/Figma/Vim/git/satori/AST/WASM/GW 等）。`PART N` はコードコメントのラベル参照
+    なので「N つ目」に、Haskell は書名『プログラミングHaskell 第2版』が変更不可のため見出しを
+    「関数型言語に再入門」に変更。各置換は適用前に lint が消えることを検証済み。
+  - `repeated-punctuation` 3件 — 日本語の「。。。」（意図的な余韻）。三点リーダ「…」に統一して解消。
+  - `max-consecutive-blank-lines` 12件 — 既知の ox-content 不具合（コードフェンス直後の単独
+    空行を誤判定）。`NON_FATAL_RULES` で非致命のまま（フェーズ9 で導入済み）。
+  - 全置換は適用前に専用スクリプトで「置換後に repeated-word/punctuation がゼロになる」ことを
+    確認してから content/posts/*.md に書き込んだ。
+- **lint 設定は変更なし** — `LINT_OPTIONS` の `repeatedWords` / `repeatedPunctuation` は strict
+  維持（無効化せず、本文側で誤検知を潰した）。
+- **実ビルド検証（`pnpm build`）exit 0** — repeated-word/punctuation の warning はゼロ
+  （残るは非致命の max-consecutive-blank-lines のみ）。生成物を確認:
+  - 記事 HTML 11本 / OG 画像 11枚 / タグページ（日本語スラッグ含む）。
+  - 移行画像 `dist/public/blog/og-image-example.webp` が出力に含まれ、記事 HTML から参照される。
+  - ネイティブ依存リーク検査 OK、`pnpm typecheck`（tsgo）exit 0。
+  - フェーズ9 のテンプレ二重 h1 問題は解消（実記事は本文が `##` 始まりで、h1 は記事タイトルの
+    1個のみ）。
+
+次回は **フェーズ13: サイトデザインの見直し**（テンプレ然とした見た目を tsuka-ryu.dev 寄りに
+調整等）から再開する。
