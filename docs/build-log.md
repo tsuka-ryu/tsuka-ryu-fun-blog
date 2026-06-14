@@ -918,3 +918,18 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
 - **要確認（コードに残らない外部設定）**: `package.json` の `engines.node` が `>=24.16.0`。
   Vercel 側で Node 24 を選べない場合はビルドが弾かれるため、プロジェクト設定で Node 版を上げるか
   `engines.node` を緩める必要がある。pnpm は `packageManager` とロックファイルから自動検出。
+
+#### 初回デプロイで詰まった点と最終的な解決
+
+- **Node 版の不一致**: Vercel の Node 24 が `v24.15.0` で、`engines.node: ">=24.16.0"` を
+  満たせず警告。範囲指定はメジャー自動アップグレード警告も出るため、`engines.node` を
+  `"24.x"` に変更（24.15.0 を満たし、ローカルの 24.16.0 も満たす）。
+- **pnpm が使われず npm にフォールバック**: 初回ビルドで `pnpm-lock.yaml`（lockfileVersion
+  9.0）のパースに失敗し npm install が走った（`EBADENGINE` 警告がその証拠）。`vercel.json` に
+  `installCommand: "pnpm install --frozen-lockfile"` を明示して pnpm を強制。
+- **`--frozen-lockfile` が exit 1（本命の原因）**: pnpm は使われるようになったが、Vercel 組み込みの
+  pnpm がロックファイルを書いた 11.6.0 と別バージョンで、lockfileVersion 9.0 の解釈差で弾かれた。
+  ローカルでは `pnpm install --frozen-lockfile`（11.6.0）が成功し、ロックファイル自体は正常だった。
+  **解決策**: Vercel の環境変数に `ENABLE_EXPERIMENTAL_COREPACK=1` を設定し、`packageManager`
+  に書いた pnpm@11.6.0 を corepack 経由でそのまま使わせる。これで一致しデプロイ成功。
+  → この環境変数はコードに残らない Vercel 側の必須設定なので、再構築時は忘れないこと。
