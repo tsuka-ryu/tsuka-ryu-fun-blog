@@ -1,12 +1,15 @@
 :root {
+  /* 背景・境界・テキストは GitHub 風の青み grey をやめ、tsuka-ryu.dev
+     （fumadocs neutral プリセット）に合わせた純 neutral grey にする。 */
   --bg: #ffffff;
-  --bg-alt: #f6f8fa;
-  --text: #1f2328;
-  --text-muted: #656d76;
-  --border: #d0d7de;
-  --primary: #6d28d9;
-  --primary-hover: #5b21b6;
-  --code-bg: #f6f8fa;
+  --bg-alt: #f5f5f5;
+  --text: #171717;
+  --text-muted: #666666;
+  --border: #e3e3e3;
+  /* アクセント色は tsuka-ryu.dev 系のオレンジ/琥珀に揃える。 */
+  --primary: hsl(25 95% 40%);
+  --primary-hover: hsl(25 95% 32%);
+  --code-bg: #f5f5f5;
   --max-width: 760px;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -14,14 +17,16 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1117;
-    --bg-alt: #161b22;
-    --text: #e6edf3;
-    --text-muted: #9198a1;
-    --border: #30363d;
-    --primary: #a78bfa;
-    --primary-hover: #c4b5fd;
-    --code-bg: #161b22;
+    /* ダークは tsuka-ryu.dev の colorBack と同じ #121212 を基調にした neutral grey。 */
+    --bg: #121212;
+    --bg-alt: #1e1e1e;
+    --text: #ededed;
+    --text-muted: #a1a1a1;
+    --border: #2a2a2a;
+    /* ダークでは tsuka-ryu.dev のダーク時アクセント（鮮やかなオレンジ）に合わせる。 */
+    --primary: hsl(33 100% 50%);
+    --primary-hover: hsl(33 100% 60%);
+    --code-bg: #1c1c1c;
   }
 }
 
@@ -75,10 +80,26 @@ a:hover {
   justify-content: space-between;
 }
 
+/* 左グループ（ブランド + Tags/About）と右グループ（検索 + ソーシャル）。
+   ブランドの右隣にナビを寄せ、検索・ソーシャルは右端へ。 */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .brand {
   font-weight: 700;
   font-size: 1.15rem;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .brand:hover {
@@ -125,6 +146,26 @@ a:hover {
   color: var(--text);
 }
 
+/* ヘッダー内の検索ボックス。ページ内ブロックとは違い、ナビの一員として
+   コンパクトに収める。狭い画面では幅を詰める。 */
+.header .search {
+  margin: 0;
+  width: clamp(7rem, 22vw, 13rem);
+}
+
+.header .search-input {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+}
+
+/* ドロップダウンは入力より広げ、入力の右端に揃えて下に出す。 */
+.header .search-results {
+  left: auto;
+  right: 0;
+  width: min(22rem, 80vw);
+}
+
 /* メイン */
 .main {
   flex: 1;
@@ -139,6 +180,18 @@ a:hover {
 /* ホーム */
 .intro {
   margin-bottom: 2.5rem;
+}
+
+/* tsuka-ryu.dev 風: 大見出しを上下グラデーションのクリップテキストにして、
+   のっぺりしたテンプレ感を薄める。色はテキスト系トークンから作るので
+   ライト/ダーク両方に追従する。 */
+.gradient-heading,
+.intro h1,
+.post-title {
+  background: linear-gradient(to bottom, var(--text), var(--text-muted));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .intro h1 {
@@ -231,11 +284,6 @@ a.tag:hover {
 
 a.tag:hover .tag-count {
   background: var(--primary);
-}
-
-.intro-links {
-  margin: 1rem 0 0;
-  font-size: 0.95rem;
 }
 
 /* 検索 */

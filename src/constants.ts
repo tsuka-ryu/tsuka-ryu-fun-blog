@@ -7,6 +7,9 @@ export const SITE_TITLE = "tsuka-ryu fun blog";
 /** サイトの説明（RSS の channel description・SEO の meta description 等で使用）。 */
 export const SITE_DESCRIPTION = "tsuka-ryuの個人ブログ";
 
+/** ホーム上部のタイトル下に出すキャッチコピー（表示専用。SEO/RSS には使わない）。 */
+export const SITE_CATCHPHRASE = "キーボードを叩く、何かが壊れる。";
+
 /** 本番のオリジン。canonical / OG / RSS / sitemap の絶対 URL を組み立てるのに使う。 */
 export const SITE_URL = "https://tsuka-ryu.dev";
 
