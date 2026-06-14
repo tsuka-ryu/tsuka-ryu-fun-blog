@@ -615,19 +615,21 @@ a.tag:hover {
   font-size: 0.9rem;
 }
 
+/* 記事数は丸バッジではなく括弧書きの等幅テキストで添える。 */
 .tag-count {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--paper);
-  background: var(--soft);
-  border-radius: 999px;
-  padding: 0 0.4rem;
-  min-width: 1.2em;
-  text-align: center;
+  color: var(--soft);
+}
+
+.tag-count::before {
+  content: "(";
+}
+
+.tag-count::after {
+  content: ")";
 }
 
 a.tag:hover .tag-count {
-  background: var(--accent);
+  color: var(--accent);
 }
 
 .tag-page .intro h1 .tag {
