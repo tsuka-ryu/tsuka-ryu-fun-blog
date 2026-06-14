@@ -902,3 +902,19 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
   削減で**読み込むファミリー数・接続を減らせる**ことを優先した。
 - **検証**: `pnpm typecheck` / `pnpm build` ともに exit 0。dist の woff2 は Zen Kaku の
   サブセット（400/700）のみで、Bricolage / JetBrains は出力されないことを確認。
+
+### 2026-06-15 — Vercel デプロイ設定（vercel.json）
+
+静的サイトを Vercel に公開するため、ビルド設定を `vercel.json` に固定した。
+
+- **判断**: ダッシュボード／CLI のどちらから入れても同じ結果になるよう、設定をリポジトリ側に
+  置く。デプロイ対象は静的成果物だけなので framework プリセットは使わない（`framework: null`）。
+- **出力先**: `vite build` の成果物は `dist/` 配下に `public` / `ssr` / `rsc` の 3 つができるが、
+  実際に配信する HTML・アセット・`feed.xml` / `sitemap.xml` は `dist/public` に入る。
+  `ssr` / `rsc` は静的生成のための中間ビルドなので、`outputDirectory` は `dist/public` を指定。
+- **ネイティブモジュール**: `@ox-content/napi` と `takumi-js` はビルド時のみ使用し、いずれも
+  `linux-x64-gnu` バイナリを optionalDependencies に持つため Vercel の Linux ビルドでも解決される。
+  ランタイムには載らない。
+- **要確認（コードに残らない外部設定）**: `package.json` の `engines.node` が `>=24.16.0`。
+  Vercel 側で Node 24 を選べない場合はビルドが弾かれるため、プロジェクト設定で Node 版を上げるか
+  `engines.node` を緩める必要がある。pnpm は `packageManager` とロックファイルから自動検出。
