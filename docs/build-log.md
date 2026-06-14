@@ -18,7 +18,7 @@
 | 5 | コンポーネント | ✅ 完了 |
 | 6 | ページ | ✅ 完了 |
 | 7 | build entry | ✅ 完了 |
-| 8 | スタイル | ⬜ 未着手 |
+| 8 | スタイル | ✅ 完了 |
 | 9 | サンプル記事 | ⬜ 未着手 |
 | 10 | ビルドと配信 | ⬜ 未着手 |
 
@@ -500,4 +500,26 @@ About 本文の追記 → 任意）。
   投入後（フェーズ9）〜ビルド検証（フェーズ10）で行う。現状 `content/posts/` は空のため
   RSS/sitemap/検索/OG はいずれも 0 件分の生成になる。
 
-次回は **フェーズ8: スタイル**（`src/styles.css`）から再開する。
+### 2026-06-14 — フェーズ8: スタイル（`src/styles.css`）
+
+設計図フェーズ8の `src/styles.css`（約540行）を作成。`ClientApp` が `#styles.css`
+（= `src/styles.css`）を副作用 import 済みなので、ファイル設置だけで結線は完了。
+
+- **実コンポーネントの className と突き合わせ**てから作成。設計図 CSS は本リポジトリで使う
+  クラスを全て網羅していることを確認（`nav-link`/`active` は Header の動的 `className={...}`
+  で使用、`tag-page .intro h1 .tag` 等のセレクタも実 DOM と一致）。
+- **コメントを日本語化**（CLAUDE.md 規約）。設計図は英語コメントだが他ファイルと揃えて翻訳。
+- **本リポジトリ固有の追記 2 点**（設計図 CSS には無い）:
+  - `.footer-copyright` — フェーズ5 レビューで Footer に足したコピーライト行用。`.footer p`
+    が `margin:0` を当てるため、Built with 行との間隔を `margin-top` で少しだけ確保。
+  - `.about-intro` / `.about-page h1` — About を自己紹介に差し替えた際、h1 の前に
+    `ShaderGimmick`（高さ240px の島）を置く構成にしたため、設計図の `.about-page h1
+    { margin-top: 0 }`（h1 先頭前提）を `1.5rem` に変更しシェーダーとの間隔を確保。
+    自己紹介本文（`.about-intro`）に最大幅と段落間隔を付与。
+- 配色は light/dark の CSS 変数（`prefers-color-scheme`）で切り替え。shiki も
+  `--shiki-light/dark` 変数でテーマ追従（クライアント JS なし）。記事レイアウトは 1080px 以上で
+  本文＋sticky 目次の 2 カラムグリッド。
+- `pnpm typecheck`（tsgo）exit 0（CSS は副作用 import で型検査対象外、`noUncheckedSideEffectImports`
+  は未有効化のまま）。実表示の確認はサンプル記事投入後（フェーズ9〜10）。
+
+次回は **フェーズ9: サンプル記事**（`content/posts/*.md`）から再開する。
