@@ -96,8 +96,10 @@
 
 1. `src/styles.css` を 06 のトークン・タイポ・レイアウトに刷新（ライト/ダーク・
    reduced-motion 維持）。
-2. `src/app/Root.tsx` に Google Fonts（Bricolage Grotesque / Zen Kaku Gothic New /
-   JetBrains Mono）の `<link>` を追加。
+2. フォント（Bricolage Grotesque / Zen Kaku Gothic New / JetBrains Mono）は**ローカル
+   同梱**で読み込む。外部 CDN は接続待ちで描画後に差し替わりチラつく（FOUT）ため、
+   `@fontsource` で `src/app/ClientApp.tsx` から import する（日本語は unicode-range で
+   サブセット分割される）。当初の Google Fonts `<link>` 案は不採用。
 3. 手描きアスタリスク ✳ を共有部品化（ヘッダーのブランド・記事区切り・フッターで使用）。
 4. `PostCard` / 一覧を marginalia レイアウト（日付を左マージン）に構造調整。
 5. ヒーローのタグライン整理（`SITE_CATCHPHRASE`）、ヒーロー名のホバーグリッチ追加、

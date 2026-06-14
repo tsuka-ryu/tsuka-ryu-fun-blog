@@ -1,32 +1,49 @@
 :root {
-  /* 背景・境界・テキストは GitHub 風の青み grey をやめ、tsuka-ryu.dev
-     （fumadocs neutral プリセット）に合わせた純 neutral grey にする。 */
-  --bg: #ffffff;
-  --bg-alt: #f5f5f5;
-  --text: #171717;
-  --text-muted: #666666;
-  --border: #e3e3e3;
-  /* アクセント色は tsuka-ryu.dev 系のオレンジ/琥珀に揃える。 */
-  --primary: hsl(25 95% 40%);
-  --primary-hover: hsl(25 95% 32%);
-  --code-bg: #f5f5f5;
-  --max-width: 760px;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* 配色トークン。温かい紙の地・墨色の本文・くすませた琥珀のアクセント・
+     冷たい差し色（万年筆インク）で、落ち着きの中に小さな遊びを置く。 */
+  --paper: #faf6ec;
+  --ink: #1c1813;
+  --soft: #837a6c; /* 補助テキスト（日付・説明・タグ） */
+  --line: #e7decf; /* 罫・境界・背景ドット */
+  --accent: #c2540c; /* リンク/ホバー/マークに使う琥珀 */
+  --ink2: #46557a; /* リンク前置きの # や結びの一言に使う冷たい差し色 */
+
+  /* Web フォントは日本語ゴシック 1 つに集約。見出しは太ウェイトで階層を付ける。
+     日付やタグなどのユーティリティは OS 標準の等幅フォントで「構造」を感じさせ、
+     日本語が混ざる箇所だけ本文と同じゴシックにフォールバックする。 */
+  --display: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --body: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Zen Kaku Gothic New", monospace;
+
+  --max-width: 740px;
+
+  /* 記事本文・検索・目次など他のスタイルが参照する従来名は、上のトークンへの
+     別名として持つ（配色を一箇所で変えれば全体に波及する）。 */
+  --bg: var(--paper);
+  --bg-alt: #f2ebdb; /* やや沈めた紙。コードブロック・表ヘッダ・目次ボックス */
+  --code-bg: #f2ebdb;
+  --text: var(--ink);
+  --text-muted: var(--soft);
+  --border: var(--line);
+  --primary: var(--accent);
+  --primary-hover: #a8480a;
+  --font-sans: var(--body);
+  --font-mono: var(--mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* ダークは tsuka-ryu.dev の colorBack と同じ #121212 を基調にした neutral grey。 */
-    --bg: #121212;
-    --bg-alt: #1e1e1e;
-    --text: #ededed;
-    --text-muted: #a1a1a1;
-    --border: #2a2a2a;
-    /* ダークでは tsuka-ryu.dev のダーク時アクセント（鮮やかなオレンジ）に合わせる。 */
-    --primary: hsl(33 100% 50%);
-    --primary-hover: hsl(33 100% 60%);
-    --code-bg: #1c1c1c;
+    --paper: #14110c;
+    --ink: #ede6d8;
+    --soft: #968c7b;
+    --line: #2a2419;
+    --accent: #e8833c;
+    --ink2: #8fa0c8;
+
+    --bg-alt: #1f1a12;
+    --code-bg: #1f1a12;
+    --primary-hover: #f09a55;
   }
 }
 
@@ -38,21 +55,29 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* 本文は 17px 基準、日本語の可読性のため行間は広め。背景は薄いドットグリッド（点描）を
+   密に敷く。方眼や点滅は宿題感・チラつきが出るため使わない。 */
 body {
   margin: 0;
-  font-family: var(--font-sans);
-  background: var(--bg);
-  color: var(--text);
+  font-family: var(--body);
+  font-size: 1.0625rem;
   line-height: 1.7;
+  background: var(--paper);
+  color: var(--ink);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--line) 65%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 1.05rem 1.05rem;
 }
 
 a {
-  color: var(--primary);
+  color: inherit;
   text-decoration: none;
 }
 
 a:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .layout {
@@ -61,27 +86,59 @@ a:hover {
   min-height: 100vh;
 }
 
+/* 手描きアスタリスク（✳）。文字に合わせて伸縮し、色は親から継承する。 */
+.ast {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  vertical-align: -0.05em;
+  color: var(--accent);
+}
+
+.ast svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ✳ を 3 つ並べたシーン区切り。中央を少し大きくして手作り感を出す。 */
+.rule {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2rem;
+  margin: 1.75rem 0;
+  color: var(--accent);
+}
+
+.rule .ast {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.rule .ast:nth-child(2) {
+  transform: scale(1.3);
+}
+
 /* ヘッダー */
 .header {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 10;
+  background: var(--paper);
 }
 
 .header-inner {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 0 1.25rem;
+  padding: 0 1.75rem;
   height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* 左グループ（ブランド + Tags/About）と右グループ（検索 + ソーシャル）。
-   ブランドの右隣にナビを寄せ、検索・ソーシャルは右端へ。 */
+/* 左にブランド＋テキストナビ、右に検索＋ソーシャルを寄せる。 */
 .header-left {
   display: flex;
   align-items: center;
@@ -96,31 +153,44 @@ a:hover {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12em;
+  font-family: var(--display);
   font-weight: 700;
-  font-size: 1.15rem;
-  color: var(--text);
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
   white-space: nowrap;
 }
 
-.brand:hover {
-  text-decoration: none;
-  color: var(--primary);
+/* ブランド脇の ✳ は、ホバーでゆっくり回る小さな反応。 */
+.brand .ast {
+  transition: transform 0.4s ease;
+}
+
+.brand:hover .ast {
+  transform: rotate(120deg);
 }
 
 .nav {
   display: flex;
   align-items: center;
   gap: 1.25rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
 }
 
 .nav-link {
-  color: var(--text-muted);
-  font-size: 0.95rem;
+  color: var(--soft);
+}
+
+.nav-link:hover {
+  color: var(--accent);
 }
 
 .nav-link.active {
-  color: var(--text);
-  font-weight: 600;
+  color: var(--ink);
 }
 
 /* ソーシャルアイコン群。テキストナビの右隣に並べる。 */
@@ -133,7 +203,7 @@ a:hover {
 
 .social-link {
   display: inline-flex;
-  color: var(--text-muted);
+  color: var(--soft);
 }
 
 .social-link svg {
@@ -143,11 +213,10 @@ a:hover {
 }
 
 .social-link:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 
-/* ヘッダー内の検索ボックス。ページ内ブロックとは違い、ナビの一員として
-   コンパクトに収める。狭い画面では幅を詰める。 */
+/* ヘッダー内の検索ボックスはナビの一員としてコンパクトに収め、狭い画面では幅を詰める。 */
 .header .search {
   margin: 0;
   width: clamp(7rem, 22vw, 13rem);
@@ -166,6 +235,30 @@ a:hover {
   width: min(22rem, 80vw);
 }
 
+/* 狭い画面では一番幅を取る検索ボックスを畳み、余白と間隔を詰めて
+   ブランド・ナビ・ソーシャルを 1 行に収める。 */
+@media (max-width: 640px) {
+  .header-inner {
+    padding: 0 1rem;
+  }
+
+  .header .search {
+    display: none;
+  }
+
+  .header-left {
+    gap: 1rem;
+  }
+
+  .nav {
+    gap: 0.9rem;
+  }
+
+  .header-right {
+    gap: 0.7rem;
+  }
+}
+
 /* メイン */
 .main {
   flex: 1;
@@ -174,116 +267,270 @@ a:hover {
 .page {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 4rem;
+  padding: 2.5rem 1.75rem 4rem;
 }
 
-/* ホーム */
+/* ホームのヒーロー。名前を大きく出し、その下に控えめなキャッチコピーを置く。 */
+.hero {
+  padding: 1.5rem 0 0.5rem;
+}
+
+.hero h1 {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12em;
+  margin: 0 0 1rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(3rem, 8vw, 4.4rem);
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.hero h1 .ast {
+  width: 0.5em;
+  height: 0.5em;
+  align-self: flex-start;
+  margin-top: 0.15em;
+}
+
+.hero-tagline {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* 名前のホバーグリッチ。常時は静かで、触れた瞬間だけ短くスライス＋二色ズレが走る。
+   data-text の複製を ::before/::after で重ね、クリップとずらしで「壊れ」を一瞬だけ見せる。 */
+.glitch {
+  position: relative;
+  display: inline-block;
+  color: var(--ink);
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: multiply;
+}
+
+.glitch::before {
+  color: var(--ink2);
+}
+
+.glitch::after {
+  color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glitch::before,
+  .glitch::after {
+    mix-blend-mode: screen;
+  }
+}
+
+.hero h1:hover .glitch::before {
+  opacity: 1;
+  animation: glitch-b 0.42s steps(2, jump-none) infinite;
+}
+
+.hero h1:hover .glitch::after {
+  opacity: 1;
+  animation: glitch-a 0.42s steps(2, jump-none) infinite;
+}
+
+@keyframes glitch-b {
+  0% {
+    transform: translate(0, 0);
+    clip-path: inset(0 0 72% 0);
+  }
+  25% {
+    transform: translate(-3px, 1px);
+    clip-path: inset(38% 0 30% 0);
+  }
+  50% {
+    transform: translate(2px, -1px);
+    clip-path: inset(8% 0 60% 0);
+  }
+  75% {
+    transform: translate(-2px, 0);
+    clip-path: inset(62% 0 12% 0);
+  }
+  100% {
+    transform: translate(0, 0);
+    clip-path: inset(0 0 72% 0);
+  }
+}
+
+@keyframes glitch-a {
+  0% {
+    transform: translate(0, 0);
+    clip-path: inset(60% 0 6% 0);
+  }
+  25% {
+    transform: translate(3px, -1px);
+    clip-path: inset(15% 0 55% 0);
+  }
+  50% {
+    transform: translate(-2px, 1px);
+    clip-path: inset(50% 0 22% 0);
+  }
+  75% {
+    transform: translate(2px, 0);
+    clip-path: inset(28% 0 44% 0);
+  }
+  100% {
+    transform: translate(0, 0);
+    clip-path: inset(60% 0 6% 0);
+  }
+}
+
+/* ヒーロー以外のページ上部（タグ一覧・タグ別など）の見出しブロック。 */
 .intro {
   margin-bottom: 2.5rem;
 }
 
-/* tsuka-ryu.dev 風: 大見出しを上下グラデーションのクリップテキストにして、
-   のっぺりしたテンプレ感を薄める。色はテキスト系トークンから作るので
-   ライト/ダーク両方に追従する。 */
-.gradient-heading,
 .intro h1,
-.post-title {
-  background: linear-gradient(to bottom, var(--text), var(--text-muted));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.intro h1 {
+.tags-page h1 {
+  font-family: var(--display);
+  font-weight: 700;
   font-size: 2rem;
+  letter-spacing: -0.01em;
   margin: 0 0 0.5rem;
 }
 
 .tagline {
-  color: var(--text-muted);
+  color: var(--soft);
   margin: 0;
 }
 
+.intro-links {
+  margin: 0.75rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.intro-links a {
+  color: var(--soft);
+}
+
+.intro-links a:hover {
+  color: var(--accent);
+}
+
+/* 記事一覧。日付を本文の左マージンに逃がし、本文（タイトル・説明・タグ）を 1 列に集約。
+   記事の間は罫線ではなく余白＋✳ のシーン区切りで分ける。 */
 .post-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  margin: 0 0 3rem;
 }
 
 .post-card {
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border);
+  position: relative;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1.25rem;
 }
 
-.post-card:last-child {
-  border-bottom: none;
+.post-card-date {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--soft);
+  line-height: 1.5;
+  padding-top: 0.5rem;
+  white-space: nowrap;
+}
+
+.post-card-body {
+  min-width: 0;
 }
 
 .post-card-title {
-  font-size: 1.4rem;
-  margin: 0 0 0.25rem;
-}
-
-.post-card-link {
-  color: var(--text);
+  margin: 0 0 0.4rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--ink);
+  transition: color 0.16s;
 }
 
 .post-card-link:hover .post-card-title {
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .post-card-excerpt {
-  color: var(--text-muted);
-  margin: 0.5rem 0 0;
+  margin: 0 0 0.7rem;
+  color: var(--soft);
+  font-size: 1.05rem;
 }
 
-.post-meta {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin: 0;
+.post-card + .post-card {
+  margin-top: 2.5rem;
 }
 
-/* タグ */
+/* 記事間の区切りは、ブランドと同じ手描きアスタリスクを mask で描く。Unicode の ✳ は
+   一部環境（iOS Safari 等）で絵文字として表示されてしまうため、文字には頼らない。
+   色は罫トークンに追従させ、ライト/ダークで馴染ませる。 */
+.post-card + .post-card::before {
+  content: "";
+  position: absolute;
+  top: -1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0.75rem;
+  height: 0.75rem;
+  background-color: var(--line);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cg%20fill='none'%20stroke='%23000'%20stroke-width='2.6'%20stroke-linecap='round'%3E%3Cpath%20d='M12%203.2L12%2020.8'/%3E%3Cpath%20d='M4.4%207L19.4%2017.4'/%3E%3Cpath%20d='M19.6%206.6L4.6%2017.2'/%3E%3C/g%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cg%20fill='none'%20stroke='%23000'%20stroke-width='2.6'%20stroke-linecap='round'%3E%3Cpath%20d='M12%203.2L12%2020.8'/%3E%3Cpath%20d='M4.4%207L19.4%2017.4'/%3E%3Cpath%20d='M19.6%206.6L4.6%2017.2'/%3E%3C/g%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/* 狭い画面では日付を本文の上に戻す。 */
+@media (max-width: 640px) {
+  .post-card {
+    grid-template-columns: 1fr;
+  }
+
+  .post-card-date {
+    padding-top: 0;
+    margin-bottom: 0.4rem;
+  }
+}
+
+/* タグ。等幅で `#tag` と並べ、# だけ冷たい差し色にする。 */
 .tag-list {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 1rem;
   padding: 0;
-  margin: 0.75rem 0 0;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
 }
 
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.1rem 0.65rem;
+  gap: 0.3rem;
+  color: var(--soft);
+}
+
+.tag::before {
+  content: "#";
+  color: var(--ink2);
 }
 
 a.tag:hover {
-  text-decoration: none;
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-.tag-count {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--bg);
-  background: var(--text-muted);
-  border-radius: 999px;
-  padding: 0 0.4rem;
-  min-width: 1.2em;
-  text-align: center;
-}
-
-a.tag:hover .tag-count {
-  background: var(--primary);
+  color: var(--accent);
 }
 
 /* 検索 */
@@ -332,13 +579,12 @@ a.tag:hover .tag-count {
 }
 
 .search-result a:hover {
-  text-decoration: none;
   background: var(--bg-alt);
 }
 
 .search-result-title {
   display: block;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .search-result-snippet {
@@ -354,19 +600,36 @@ a.tag:hover .tag-count {
   font-size: 0.9rem;
 }
 
-/* タグ一覧 */
+/* タグ一覧ページ。等幅の `#tag` に記事数バッジを添える。 */
 .tag-cloud {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.6rem 1.1rem;
   padding: 0;
   margin: 1.5rem 0 0;
+  font-family: var(--mono);
 }
 
 .tag-cloud .tag {
   font-size: 0.9rem;
-  padding: 0.25rem 0.8rem;
+}
+
+/* 記事数は丸バッジではなく括弧書きの等幅テキストで添える。 */
+.tag-count {
+  color: var(--soft);
+}
+
+.tag-count::before {
+  content: "(";
+}
+
+.tag-count::after {
+  content: ")";
+}
+
+a.tag:hover .tag-count {
+  color: var(--accent);
 }
 
 .tag-page .intro h1 .tag {
@@ -374,13 +637,12 @@ a.tag:hover .tag-count {
   vertical-align: middle;
 }
 
-/* 記事 */
-/* 既定は 1 カラム（狭い画面では目次が記事の上に積まれる）。
+/* 記事ページ。既定は 1 カラム（狭い画面では目次が記事の上に積まれる）。
    広い画面ではグリッド化し、右カラムに sticky な目次を置く。 */
 .post-layout {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 4rem;
+  padding: 2.5rem 1.75rem 4rem;
 }
 
 @media (min-width: 1080px) {
@@ -388,42 +650,74 @@ a.tag:hover .tag-count {
     max-width: calc(var(--max-width) + 16rem);
     display: grid;
     grid-template-columns: minmax(0, var(--max-width)) 1fr;
-    grid-template-areas: "body toc";
     column-gap: 3rem;
     align-items: start;
   }
 
+  /* 記事の中身（見出し・本文・フッター）を本文カラムに、目次を右カラムに振り分ける。
+     目次は本文内にあるため、article 自身を display:contents にして子をグリッド項目化する。 */
   .post-page {
-    grid-area: body;
+    display: contents;
+  }
+
+  .post-header,
+  .post-body,
+  .post-footer {
+    grid-column: 1;
     min-width: 0;
   }
 }
 
 .post-header {
   margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border);
   padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .post-title {
-  font-size: 2rem;
   margin: 0 0 0.5rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 2rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.post-meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--soft);
+}
+
+.post-header .tag-list {
+  margin-top: 0.75rem;
 }
 
 .post-body {
   font-size: 1.02rem;
 }
 
+.post-body a {
+  color: var(--accent);
+}
+
+.post-body a:hover {
+  text-decoration: underline;
+}
+
 .post-body h1,
 .post-body h2,
 .post-body h3 {
   margin-top: 2rem;
+  font-family: var(--display);
+  font-weight: 700;
   line-height: 1.3;
 }
 
 .post-body h2 {
-  border-bottom: 1px solid var(--border);
   padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .post-body code {
@@ -450,9 +744,9 @@ a.tag:hover .tag-count {
   font-size: 0.85rem;
 }
 
-/* shiki 出力: 各トークンは --shiki-light / --shiki-dark の CSS 変数を持ち、
-   <pre> は対応する *-bg 変数を持つ。これによりクライアント側のテーマ切り替え
-   なしで、サイトの prefers-color-scheme（ダークモード）にハイライトが追従する。 */
+/* shiki 出力: 各トークンは --shiki-light / --shiki-dark の CSS 変数を持ち、<pre> は
+   対応する *-bg 変数を持つ。これでクライアント側のテーマ切り替えなしに、ハイライトが
+   prefers-color-scheme（ダークモード）へ追従する。 */
 .post-body pre.shiki {
   background-color: var(--shiki-light-bg, var(--code-bg));
 }
@@ -517,29 +811,56 @@ a.tag:hover .tag-count {
 }
 
 .back-link {
-  font-size: 0.95rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--soft);
 }
 
-/* 目次。狭い画面では記事の上に枠付きボックスとして出し、
-   広い画面ではグリッドの領域指定で右側の sticky カラムに移す。 */
+.back-link:hover {
+  color: var(--accent);
+}
+
+/* 目次。タグの下に折りたたみ式（<details>）で置く枠付きボックス。広い画面では
+   右側の sticky カラムに移す。 */
 .post-toc {
-  margin-bottom: 2.5rem;
-  padding: 1rem 1.25rem;
+  margin: 0 0 2.5rem;
+  padding: 0.75rem 1.25rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-alt);
   font-size: 0.9rem;
 }
 
+/* summary が開閉トグル。既定の三角マーカーは消し、自前の ▸ を回転で開閉表現する。 */
 .post-toc-title {
-  margin: 0 0 0.5rem;
+  cursor: pointer;
+  margin: 0;
+  font-family: var(--display);
   font-weight: 700;
   font-size: 0.95rem;
+  list-style: none;
+}
+
+.post-toc-title::-webkit-details-marker {
+  display: none;
+}
+
+.post-toc-title::before {
+  content: "▸";
+  display: inline-block;
+  width: 1em;
+  margin-right: 0.25rem;
+  color: var(--soft);
+  transition: transform 0.15s ease;
+}
+
+.post-toc[open] .post-toc-title::before {
+  transform: rotate(90deg);
 }
 
 .post-toc-list {
   list-style: none;
-  margin: 0;
+  margin: 0.6rem 0 0;
   padding: 0;
 }
 
@@ -565,13 +886,15 @@ a.tag:hover .tag-count {
 
 @media (min-width: 1080px) {
   .post-toc {
-    grid-area: toc;
+    grid-column: 2;
+    grid-row: 1 / 999;
+    align-self: start;
     position: sticky;
     top: 76px;
-    margin-bottom: 0;
+    margin: 0;
+    padding: 0;
     border: none;
     background: none;
-    padding: 0;
   }
 }
 
@@ -580,11 +903,35 @@ a.tag:hover .tag-count {
   scroll-margin-top: 76px;
 }
 
-/* About */
-/* 設計図の `margin-top: 0`（h1 が先頭の前提）と異なり、本リポジトリは h1 の前に
-   ShaderGimmick（高さ 240px の島）を置くため、シェーダーとの間隔を少し空ける。 */
+/* About の見出し。背後にシェーダーを薄く敷くため、見出しを重ね合わせの前面に置く。 */
+.about-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 220px;
+  margin: 0.5rem 0 1rem;
+}
+
+/* シェーダーは見出しの背後に低不透明度で。ふちは放射状マスクでぼかし、
+   ハードな四角い箱に見えないよう地に溶かす。クリックは透過させる。 */
+.about-hero-shader {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.6;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(
+    120% 100% at 28% 50%,
+    #000 25%,
+    transparent 72%
+  );
+  mask-image: radial-gradient(120% 100% at 28% 50%, #000 25%, transparent 72%);
+}
+
 .about-page h1 {
-  margin-top: 1.5rem;
+  position: relative;
+  z-index: 1;
+  margin: 0;
 }
 
 .about-intro {
@@ -601,24 +948,41 @@ a.tag:hover .tag-count {
 }
 
 .not-found-page h1 {
+  font-family: var(--display);
   font-size: 4rem;
   margin: 0;
 }
 
-/* フッター */
+/* フッター。本文の列幅には収めず画面いっぱいに広げ、クレジットを左端・結びの一言を
+   右端へ振り分ける。上にもまとまった余白を取り、本文から切り離す。 */
 .footer {
-  border-top: 1px solid var(--border);
-  padding: 1.5rem 1.25rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  margin-top: 4rem;
+  padding: 2rem clamp(1.75rem, 6vw, 4rem) 3.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--soft);
 }
 
-.footer p {
-  margin: 0;
+.footer-signoff {
+  font-family: var(--body);
+  font-style: italic;
+  color: var(--ink2);
 }
 
-/* コピーライト行（フェーズ5 で追加）。Built with 行との間隔を少し空ける。 */
-.footer-copyright {
-  margin-top: 0.35rem;
+/* 動きを抑える設定では、ブランドマークの回転とヒーローのホバーグリッチを無効にする。 */
+@media (prefers-reduced-motion: reduce) {
+  .brand:hover .ast {
+    transform: none;
+  }
+
+  .hero h1:hover .glitch::before,
+  .hero h1:hover .glitch::after {
+    animation: none;
+    opacity: 0;
+  }
 }

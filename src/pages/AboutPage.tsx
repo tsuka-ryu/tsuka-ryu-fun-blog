@@ -11,9 +11,14 @@ export function AboutPage() {
         description="tsuka-ryu について。モダンなWeb技術が好きなフロントエンドエンジニアです。"
         path="/about"
       />
-      {/* シェーダーの島。フェーズ8で本文背後に重ねる全面背景にする想定。 */}
-      <ShaderGimmick />
-      <h1>About me</h1>
+      {/* 見出しの背後にシェーダーを低不透明度で敷き、ふちをぼかして地に馴染ませる。
+          シェーダーは装飾なので支援技術からは隠す（aria-hidden）。 */}
+      <header className="about-hero">
+        <div className="about-hero-shader" aria-hidden="true">
+          <ShaderGimmick />
+        </div>
+        <h1>About me</h1>
+      </header>
       <section className="about-intro">
         <p>モダンなWeb技術が好きなフロントエンドエンジニアです。</p>
         <p>

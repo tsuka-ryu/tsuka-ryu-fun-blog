@@ -842,3 +842,63 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
 次回は **本実装**（`src/styles.css` 刷新 / `Root.tsx` にフォント / ✳ の共有部品化 /
 `PostCard`・一覧の marginalia レイアウト化 / ヒーロー・フッターのコピー）から再開する。
 詳細 TODO は `docs/design-direction.md` 末尾を参照。
+
+### 2026-06-14 — 世界観デザインの本実装（marginalia レイアウト & ローカルフォント化）
+
+`docs/design-direction.md` の採用案を `src/` に反映した。モック（`design/06-marginalia.html`）
+をそのまま移植するのではなく、既存コンポーネント構成（subpath imports / Server・Client
+の分離）に馴染ませる形で組み込んだ。
+
+- **配色トークンを刷新**: `src/styles.css` の `:root` を 紙 `--paper #FAF6EC` / 墨
+  `--ink` / 補助 `--soft` / 罫 `--line` / 琥珀 `--accent #C2540C` / 冷たい差し色
+  `--ink2 #46557A` に置換。記事本文・検索・目次など既存スタイルが参照していた従来名
+  （`--bg` / `--text` / `--border` / `--primary` 等）は**新トークンへの別名**として残し、
+  配色変更が一箇所で全体に波及するようにした（全 CSS を書き換えずに済む）。背景は薄い
+  ドットグリッド（`radial-gradient`）。
+- **フォントはローカル同梱（`@fontsource`）に決定**。当初の設計メモは `Root.tsx` に
+  Google Fonts の `<link>` を置く案だったが、**外部 CDN は接続待ちのあいだ既定フォントで
+  描画され、読み込み後に差し替わってチラつく**（FOUT）ため不採用。
+  `@fontsource-variable/bricolage-grotesque` / `@fontsource/zen-kaku-gothic-new`(400/500) /
+  `@fontsource-variable/jetbrains-mono` を `src/app/ClientApp.tsx` で import。
+  - 日本語フォントは `unicode-range` でサブセット分割された woff2（Zen Kaku は約 120
+    サブセット）なので、フルセットを丸ごと読む事故にならず必要範囲だけ取得される。
+  - **ハマりどころ**: バレット import（`@fontsource-variable/...`）は tsgo が型宣言を
+    見つけられず `TS2882`。zen のように**明示の `/index.css` パス**で実ファイルを指すと
+    解決する（拡張子付きの実在ファイルとして解決されるため）。フォント名は variable 版が
+    `"Bricolage Grotesque Variable"` / `"JetBrains Mono Variable"`（末尾 Variable）。
+- **✳ を共有部品化**: `src/components/Asterisk.tsx` に `Asterisk`（インライン SVG・歪ませた
+  3 本線・`aria-hidden`）と `SceneBreak`（✳ を 3 つ並べた本のシーン区切り）。ヘッダーの
+  ブランド脇・ヒーロー見出し・ホームの一覧上部で使い回す。
+- **一覧を marginalia レイアウトに**: `PostCard` を「日付（左マージン・等幅・nowrap）＋
+  本文 1 列」のグリッドに。日付は `formatDateDots`（`2026.06.07`、月日 0 埋め）を
+  `src/lib/time.ts` に追加して使用（記事ページの見出しは従来の和暦表記のまま）。記事間は
+  罫線をやめ `.post-card + .post-card::before` の ✳＋余白で区切る。タグは等幅の `#tag`
+  （`#` を `--ink2`）に統一（一覧・タグページ・記事ページで共有）。
+- **コピーと定数**: `SITE_NAME = "tsuka-ryu"` を追加し、ヘッダーのブランドとヒーロー H1 を
+  これに（メタ用の長い `SITE_TITLE` と表示用の短い名前で役割分離）。ヒーロー H1 は
+  `:hover` のときだけ走るグリッチ（`.glitch` + `data-text` の純 CSS、JS 不要）。フッターは
+  `FOOTER_SIGNOFF = "——そういうものだ。"` を右に置き、キャッチコピーの「壊れる。」に
+  呼応させた。`prefers-reduced-motion` でブランド回転・グリッチを無効化。
+- **検証**: `pnpm typecheck`（tsgo）exit 0 / `pnpm build` exit 0。dist にローカル woff2 を
+  同梱（Bricolage / JetBrains の variable と Zen Kaku のサブセット群）、生成 HTML に
+  `hero` / `glitch` / `rule` / `post-card-date` / `footer-signoff`（「そういうものだ。」）を確認。
+
+### 2026-06-14 — Web フォントを 1 ファミリーに集約（Zen Kaku Gothic New のみ）
+
+本実装直後のプレビューで「フォントが増えすぎ、パフォーマンスに影響しそう」との指摘を受け、
+読み込む Web フォントファミリーを 3 → 1 に削減した。
+
+- **判断**: 日本語を表示する以上、日本語フォント（Zen Kaku Gothic New）は外せない。
+  見出し用の Bricolage Grotesque と等幅の JetBrains Mono はいずれも**欧文専用で日本語
+  グリフを持たない**ため、「1 つにする」なら日本語・欧文を両方カバーする Zen Kaku に
+  寄せる以外にない。両 variable フォントを削除（`pnpm remove`）。
+- **見出し**: 単一ファミリー内でウェイト差（本文 400 / 見出し 700）で階層を付ける。
+  Zen Kaku は 400/700 を import（600 指定は CSS から 700 に統一）。
+- **等幅の体裁**: 日付・タグ・ナビ等の「ターミナルに住んでいる」気配は、**OS 標準の
+  等幅フォント**（`ui-monospace, SFMono-Regular, Menlo, …`）で残す。これは端末ローカル
+  なので Web フォントを増やさない。日本語が混ざるタグだけ Zen Kaku にフォールバック。
+- **トレードオフ**: 見出しのグロテスクの不揃いな表情と、等幅の専用書体感は失われる。
+  ただしページ重量の主因は元々日本語サブセット（Zen Kaku）であり、欧文 2 ファミリーの
+  削減で**読み込むファミリー数・接続を減らせる**ことを優先した。
+- **検証**: `pnpm typecheck` / `pnpm build` ともに exit 0。dist の woff2 は Zen Kaku の
+  サブセット（400/700）のみで、Bricolage / JetBrains は出力されないことを確認。
