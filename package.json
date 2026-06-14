@@ -12,6 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "vite build && vite preview",
+    "design": "vite design --config design/vite.config.ts --open",
     "typecheck": "tsgo --noEmit"
   },
   "packageManager": "pnpm@11.6.0",
