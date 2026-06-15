@@ -1023,3 +1023,21 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
   影響範囲が広い。ホスティング設定 1 行で閉じるほうが小さい。
 - **404 ページ**: 存在しないパスは出力済みの `404.html` を Vercel が自動で 404 レスポンスに使うため、
   追加設定なしで機能する。
+
+### 2026-06-15 — React Doctor を導入（ローカル dev 依存＋エージェントスキルのみ）
+
+React 固有のアンチパターン・アクセシビリティ・性能リスクを検出する `react-doctor`（Oxlint ベースの
+CLI）をローカルに導入。初回スキャンのスコアは 47/100（30 件指摘）で、改善の起点にする。
+
+- **手段**: `react-doctor` を **pnpm の devDependency** として追加し、`doctor` スクリプトを
+  `react-doctor`（ローカル bin）に設定。あわせて `.claude/` `.agents/` のエージェントスキルを置き、
+  Claude Code 等から triage できるようにした。
+- **`npx ...@latest` ではなくローカル bin にした理由**: 公式インストーラの既定スクリプトは
+  `npx react-doctor@latest` で毎回ネットから最新を取りに行き、ローカル固定版を無視する。
+  バージョンを lock で固定し再現性を保つため、`doctor` スクリプトは `react-doctor`（local bin）に直した。
+- **`pnpm doctor` は使えない（名前衝突）**: `pnpm doctor` は pnpm 組み込みの診断コマンドと衝突するため、
+  スクリプト実行は必ず **`pnpm run doctor`** とする。
+- **却下した付帯セットアップ**: インストーラは pre-commit フック（lefthook）と GitHub Actions（PR コメント）も
+  追加するが、両方とも外した。pre-commit は毎コミットにスキャン遅延が乗る割に非ブロッキングで効果が薄く、
+  CI は PR への write 権限と実行時間のコストに対し現時点の運用（個人ブログ・main 直コミット中心）では過剰。
+  必要になったら CI から段階的に入れる。
