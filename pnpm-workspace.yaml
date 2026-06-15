@@ -2,3 +2,13 @@
 # pnpm はデフォルトでビルドスクリプトを止めるため、明示的に許可する。
 allowBuilds:
   lefthook: true
+
+# サプライチェーン対策。公開直後に混入され短時間で取り下げられる汚染版を避けるため、
+# 新規に解決するバージョンは公開から 7 日経過するまで採用しない。既定（1 日）より長くし、
+# 別リポジトリ（tsuka-ryu-s-blog）とも値をそろえて明示する。
+minimumReleaseAge: "10080" # 7 days in minutes
+# パッケージの信頼度（provenance や署名）が過去リリースより低下したら install を失敗させる。
+trustPolicy: no-downgrade
+# 上記ゲートは新規解決にだけ効かせ、確定済み lockfile の再検証では適用しない。
+# 単一著者リポジトリで全コミットが信頼でき、pin 済みの新しい dev 依存が再検証で落ちるのを防ぐため。
+trustLockfile: true

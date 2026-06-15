@@ -1024,20 +1024,30 @@ rss-feature 4件 / og-image 1件）を改めて調査した。
 - **404 ページ**: 存在しないパスは出力済みの `404.html` を Vercel が自動で 404 レスポンスに使うため、
   追加設定なしで機能する。
 
-### 2026-06-15 — React Doctor を導入（ローカル dev 依存＋エージェントスキルのみ）
+### 2026-06-15 — React Doctor を試用して撤去（指摘の大半が静的構成では誤検知）
 
-React 固有のアンチパターン・アクセシビリティ・性能リスクを検出する `react-doctor`（Oxlint ベースの
-CLI）をローカルに導入。初回スキャンのスコアは 47/100（30 件指摘）で、改善の起点にする。
+React 固有のアンチパターンを検出する `react-doctor`（Oxlint ベースの CLI）をローカル導入して
+評価したが、同日中に撤去した。スキャン結果が当リポジトリの構成に噛み合わず、維持コストに見合わないと判断。
 
-- **手段**: `react-doctor` を **pnpm の devDependency** として追加し、`doctor` スクリプトを
-  `react-doctor`（ローカル bin）に設定。あわせて `.claude/` `.agents/` のエージェントスキルを置き、
-  Claude Code 等から triage できるようにした。
-- **`npx ...@latest` ではなくローカル bin にした理由**: 公式インストーラの既定スクリプトは
-  `npx react-doctor@latest` で毎回ネットから最新を取りに行き、ローカル固定版を無視する。
-  バージョンを lock で固定し再現性を保つため、`doctor` スクリプトは `react-doctor`（local bin）に直した。
-- **`pnpm doctor` は使えない（名前衝突）**: `pnpm doctor` は pnpm 組み込みの診断コマンドと衝突するため、
-  スクリプト実行は必ず **`pnpm run doctor`** とする。
-- **却下した付帯セットアップ**: インストーラは pre-commit フック（lefthook）と GitHub Actions（PR コメント）も
-  追加するが、両方とも外した。pre-commit は毎コミットにスキャン遅延が乗る割に非ブロッキングで効果が薄く、
-  CI は PR への write 権限と実行時間のコストに対し現時点の運用（個人ブログ・main 直コミット中心）では過剰。
-  必要になったら CI から段階的に入れる。
+- **撤去理由（指摘の質）**: 初回スコアは 47/100（30 件）だったが、実コードを確認すると減点の大半が
+  この構成では誤検知だった。最大の発生源は mdast→React の静的レンダラー（`src/markdown/components.tsx`）への
+  `no-render-in-render`（15 件）と `no-array-index-as-key`（4 件）で、いずれも「再マウントで state が飛ぶ／
+  並べ替えで key が壊れる」を前提とするが、ここはビルド時に一度 HTML へ描くだけで保持すべき state も
+  並べ替えも無い。他も、意図的に外部出力させている検索ランタイムの動的 import（`SearchBox.tsx`、`@vite-ignore`）、
+  CSS 宣言を分割する `String.indexOf`（`highlight.ts`、配列走査ではない）、OG 画像生成が要求する
+  インラインスタイル（`OgCard.tsx`）、vendor したブランドロゴ SVG（`Header.tsx`）など、文脈を読むと妥当なものを
+  指摘していた。`dist/` の公開 HTML を「デバッグ成果物」と誤判定もしていた。
+- **拾った実改善 1（pnpm サプライチェーン強化・残す）**: react-doctor がきっかけで `pnpm-workspace.yaml` に
+  `minimumReleaseAge: "10080"`（7 日）・`trustPolicy: no-downgrade`・`trustLockfile: true` を明示で入れた。
+  値・方針は別リポジトリ（`tsuka-ryu-s-blog`）とそろえる。react-doctor とは独立に有効なので残す。
+  - **注意（pnpm 11.6.0 の既知の落とし穴）**: `minimumReleaseAge` 等のポリシーが有効な状態で、入れたての
+    新しいパッケージを含む再解決（`pnpm add`／`remove`）が走ると、pnpm 11.6.0 の不具合で
+    `ERR_PNPM_RESOLUTION_POLICY_VIOLATIONS_UNHANDLED` を出して失敗することがある（実際 react-doctor 撤去時に
+    踏んだ）。lockfile が最新で解決が走らない通常の `install` は通る。`trustLockfile: true` は確定済み
+    lockfile の再検証を省くためで、この落とし穴の緩和にもなる。
+- **拾った実改善 2（a11y・残す）**: Markdown タスクリストの `disabled`・`readOnly` な checkbox に
+  `aria-label`（完了/未完了）を付与（`src/markdown/components.tsx`）。これも独立に有効なので残す。
+- **撤去内容**: `react-doctor` devDependency、`doctor` スクリプト、`.claude/` `.agents/` のエージェント
+  スキル、インストーラが追加した pre-commit フック（lefthook）と GitHub Actions ワークフローをすべて削除。
+- **再評価の指針**: 対話的 UI（クライアント state を持つコンポーネント）が増えたら再検討の余地はある。
+  その際は誤検知を `doctor.config` でファイル別に抑制する前提で、CI ではなくローカル triage 用途に絞る。

@@ -134,7 +134,13 @@ function ListItem({ node }: NodeProps<"listItem">) {
   if (isTask) {
     return (
       <li className="task-list-item">
-        <input type="checkbox" checked={node.checked ?? false} disabled readOnly />{" "}
+        <input
+          type="checkbox"
+          checked={node.checked ?? false}
+          disabled
+          readOnly
+          aria-label={node.checked ? "完了" : "未完了"}
+        />{" "}
         {renderChildren(node.children)}
       </li>
     );
