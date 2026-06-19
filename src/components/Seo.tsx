@@ -1,3 +1,4 @@
+import { TitleSync } from "#components/TitleSync.js";
 import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "#constants.js";
 
 /** website / article 共通の SEO プロパティ。 */
@@ -54,6 +55,9 @@ export function Seo({ title, description, path, image, type = "website", noindex
   return (
     <>
       <title>{fullTitle}</title>
+      {/* ソフト遷移後に document.title が前ページのまま残る問題を、クライアント側で
+          焼き直して塞ぐ。共有シート（Web Share）が読むのは document.title のため。 */}
+      <TitleSync title={fullTitle} />
       <meta name="description" content={desc} />
       {canonical && <link rel="canonical" href={canonical} />}
       {noindex && <meta name="robots" content="noindex" />}
