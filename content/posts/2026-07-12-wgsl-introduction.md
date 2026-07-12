@@ -20,7 +20,7 @@ tags: ["シェーダー", "WGSL", "GLSL", "雑記"]
   - [楽しい！Unityシェーダーお絵描き入門！](https://docs.google.com/presentation/d/1NMhx4HWuNZsjNRRlaFOu2ysjo04NgcpFlEhzodE8Rlg)
 - [Maxime Heckel「The Study of Shaders with React Three Fiber」](https://blog.maximeheckel.com/posts/the-study-of-shaders-with-react-three-fiber/)
 - [シェーダだけで世界を創る！three.jsによるレイマーチング](https://www.slideshare.net/slideshow/threejs-58238484/58238484)
-- [レイマーチングで 3D を描く](https://wgld.org/d/glsl/)
+- [wgld.org / GLSL](https://wgld.org/d/glsl/)
 - [シェーダー芸人になりたかった6か月前の自分に教えてあげたいリンク集](https://qiita.com/kaneta1992/items/7fe9b47cc6c0836222af)
   などなど...
 
@@ -57,9 +57,9 @@ WGSLで書くために必要なセットアップが最低限把握できるよ�
 
 レイマーチングの概要をつかむために読んだ。距離関数(SDF)でシーンを定義して、レイを少しずつ前進させながら衝突を探す……（この文章自体もAIに書いてもらったがよくわからん）というのが骨子らしい。補足してもらいつつだけどまだ腹落ちしてない感じはある。
 
-### レイマーチングで 3D を描く
+### wgld.org / GLSL
 
-これから読む。レイマーチングに行く前にマンデルブロ集合やジュリア集合が書けたのは新鮮だった。やっぱフラクタルはやってみたかったことのうちの一つなのでね。
+GLSL全般の連載。ノイズやフラクタル、レイマーチング、ライティングまで一通り扱っている。レイマーチングの回はこれから読むところだけど、その前段のマンデルブロ集合やジュリア集合が書けたのは新鮮だった。やっぱフラクタルはやってみたかったことのうちの一つなのでね。
 
 ## シェーダーに対するメンタルモデル
 
