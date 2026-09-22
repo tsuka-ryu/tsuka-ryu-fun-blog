@@ -5,17 +5,19 @@
 
   // Code Spell Checker（cSpell）にプロジェクト固有語を登録してノイズを抑制。
   "cSpell.words": [
+    "BAKUNE",
     "esbuild",
     "frontmatter",
     "funstack",
+    "Kaigi",
     "napi",
     "pnpm",
     "shiki",
     "takumi",
-    "tsgo",
+    "tsbuildinfo",
     "tsconfig",
+    "tsgo",
     "tsuka",
-    "uhyo",
-    "tsbuildinfo"
+    "uhyo"
   ]
 }
