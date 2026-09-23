@@ -2,7 +2,8 @@
 title: oxcのTypeScriptパーサーを読む 第4回 そのASTは誰に合わせているのか
 description: oxcが吐くASTの形は誰の仕様に合わせているのか。tsc / typescript-estree / oxc の3者の関係を、null型と後置の!の木の形で見ます
 date: 2026-09-27
-tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
+tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
+draft: true
 ---
 
 ## 今回読むファイル

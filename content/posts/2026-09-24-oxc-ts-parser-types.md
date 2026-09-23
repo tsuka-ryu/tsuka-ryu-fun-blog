@@ -2,7 +2,7 @@
 title: oxcのTypeScriptパーサーを読む 第1回 型はどう読まれるか
 description: type A = string | number; がoxcでどう読まれるかを実際に追う
 date: 2026-09-24
-tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
+tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 ---
 
 ## 今回読むファイル

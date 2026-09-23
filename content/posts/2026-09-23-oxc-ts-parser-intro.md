@@ -2,7 +2,7 @@
 title: oxcのTypeScriptパーサーを読む 第0回 はじめに
 description: oxcのTypeScript周りのパーサー実装を読んだ 第0回
 date: 2026-09-23
-tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
+tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 ---
 
 TSKaigi Sendaiの下ごしらえとして、ここ2週間ほど、[oxc](https://github.com/oxc-project/oxc)のTypeScript周りのパーサー実装を読んでいました。

@@ -1104,3 +1104,23 @@ invalid JS syntax.`。
   `.md` がアセットとして `dist/` に出力されることもない）。
 - **却下した代替**: `?raw` をやめて Markdown 用のプラグインを入れる案。パースは ox-content
   （ネイティブ）に寄せる構成なので、Vite 側に別の Markdown 処理を増やすと二重になる。
+
+### 2026-09-23 — frontmatter に `draft` フラグを追加（dev だけ見える下書き）
+
+oxc の TypeScript パーサー連載を書いている途中、レビュー済みの記事だけを本番に出しつつ、
+未レビューの記事は `pnpm run dev` で確認できるようにしたくなった。ブランチを分けて出し分ける
+運用も考えたが、連載は前後の記事を参照し合うので、まとめて 1 本のブランチ・PR で進めたい。
+
+- **対処**: `PostFrontmatter` に `draft?: boolean` を追加し、`src/content.ts` の `posts` 配列を
+  組み立てる `map()` の直後に `.filter((post) => !post.frontmatter.draft || import.meta.env.DEV)`
+  を挟んだ。`getAllPosts` / `getPostBySlug` / タグ集計（`tagMap`）はすべてこの配列から派生するので、
+  ルーティング・一覧・RSS・検索・OGP・タグページのどこにも draft 記事が出てこなくなる。
+  `import.meta.env.DEV` は `pnpm run dev` 実行時のみ `true` になるので、そのときだけ通常の記事と
+  同じように見える。
+- **順序が重要**: フィルタは frontmatter のパース・URL 検証・lint より後ろに置いた。draft でも
+  パース・lint は必ず通すことで、公開前の記事が壊れたまま放置されるのを防ぐ。
+- **確認**: `pnpm run build` の `dist/public/posts/` に draft 記事が出力されないこと、
+  `dist/public/tags/oxc-ts-parser.html` が非 draft の記事だけを列挙すること、
+  `pnpm run dev` 起動中は `curl -H "Accept: text/html" .../draft-記事のslug` が 200 を返すことを確認した。
+- **却下した代替**: 記事を別ブランチに分けて出す案。連載記事同士が前回・次回を参照し合っており、
+  レビュー中に全体の整合性を見たいので、1 ブランチにまとめて draft で隠す方が扱いやすい。

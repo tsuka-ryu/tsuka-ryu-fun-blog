@@ -2,7 +2,8 @@
 title: oxcのTypeScriptパーサーを読む 第3回 型引数つき呼び出しがASTになるまで
 description: たった1行の入力がパーサーの4ファイルを横断する様子を、実際に採ったトレースで先頭から追います。投機パースが成功する側と、巻き戻って比較演算になる側を並べました。
 date: 2026-09-26
-tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
+tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
+draft: true
 ---
 
 ## 今回読むファイル
