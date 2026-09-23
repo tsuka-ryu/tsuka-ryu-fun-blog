@@ -1087,3 +1087,20 @@ React 固有のアンチパターンを検出する `react-doctor`（Oxlint ベ�
   lint は通るが、地の文の引用が等幅で浮く。体裁のために引用の書き方を曲げるのは本末転倒。
 - **補足**: このルールは引用ブロック（`>`）の中でも発火する。Markdown の構造ではなく
   テキストを見ているため、引用であることを理由に除外はされない。
+
+### 2026-09-23 — `.md` を `assetsInclude` に追加（記事を保存すると HMR が落ちる）
+
+`content/posts/*.md` を編集して保存するたび、dev サーバーの rsc 環境が Internal Server Error を出して
+HMR が失敗していた。エラーは `Failed to parse source for import analysis because the content contains
+invalid JS syntax.`。
+
+- **原因**: `src/content.ts` は `import.meta.glob("../content/posts/*.md", { query: "?raw" })` で
+  記事を文字列として読んでいる。ビルド時はこれで問題ないが、HMR で再読み込みされるときに
+  `?raw` が付かない素の `.md` として要求されることがあり、Vite が JS として解析しようとして落ちる。
+- **対処**: `vite.config.ts` に `assetsInclude: ["**/*.md"]` を追加。`.md` をアセット扱いにすると
+  JS としての解析対象から外れる。Vite のエラーメッセージ自身がこの対処を案内している。
+- **確認**: 修正前は dev サーバーに接続した時点で毎回エラー、修正後は記事を保存しても
+  `hot updated` だけが出てエラーは 0 件。`pnpm build` の出力は変わらず（記事 17 本、
+  `.md` がアセットとして `dist/` に出力されることもない）。
+- **却下した代替**: `?raw` をやめて Markdown 用のプラグインを入れる案。パースは ox-content
+  （ネイティブ）に寄せる構成なので、Vite 側に別の Markdown 処理を増やすと二重になる。
