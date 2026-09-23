@@ -5,6 +5,22 @@ date: 2026-09-27
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
 ---
 
+## 今回読むファイル
+
+読んだのは oxc の rev `1aa5ec11ce` です。行番号はすべてこのリビジョンのもので、ズレたときに探せるように関数名とセットで書きます。今回おもに開くのはこのあたりです。
+
+```text
+crates/oxc_ast/src/lib.rs                  132行   何に合わせるかを書いた冒頭のdoc
+crates/oxc_ast/src/ast/ts.rs             1,876行   TSノードの定義
+crates/oxc_ast/src/ast/js.rs             2,929行   JSノードの定義。型の中にも出てきます
+crates/oxc_parser/src/ts/types.rs        1,690行   null型を読む腕
+crates/oxc_parser/src/js/expression.rs   1,799行   後置の ! とチェーンの組み立て
+```
+
+## 今回の題材
+
+比較のために、TypeScript本体（tsc 3.9 / 4.0 / 5.9 / 6.0）と
+`@typescript-eslint/typescript-estree` 8.26.1 も実際に走らせています。
 自分でパーサーを書いているときは、ASTの形は自分で決められます。足し算をどういうノードにするかも、括弧をノードとして残すかどうかも、好きにしていい。
 
 でも実用のパーサーにはそれができません。出力を食べる側がいるからです。リンターのルール、フォーマッター、トランスパイラ。それらは「このノードにはこの名前のフィールドがあるはず」という前提で書かれていて、パーサーを差し替えた瞬間にその前提が崩れると困る。
@@ -62,6 +78,7 @@ type A = null;
 これをoxcのパーサーに `--estree` を付けて流すとJSONが出てきます。ノードの種類だけ抜き出して木にすると、型注釈の部分はこうです。
 
 ```
+
 TSTypeAliasDeclaration
   id: Identifier "A"
   typeAnnotation: TSNullKeyword

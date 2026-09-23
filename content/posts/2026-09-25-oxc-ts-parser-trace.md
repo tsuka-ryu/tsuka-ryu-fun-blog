@@ -5,9 +5,22 @@ date: 2026-09-25
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
 ---
 
-## 同じ形なのに、結果が違う2行
+## 今回読むファイル
 
-前回は型の文法を上から下まで降りました。静かなものでしたね。今回は式の側から入ります。1行の入力を先頭から歩かせてみます。題材はこの2つです。
+読んだのは oxc の rev `1aa5ec11ce` です。行番号はすべてこのリビジョンのもので、ズレたときに探せるように関数名とセットで書きます。今回おもに開くのはこのあたりです。
+
+```text
+crates/oxc_parser/src/js/expression.rs   1,799行   式のはしご。JSとTSの境界はここ
+crates/oxc_parser/src/ts/types.rs        1,690行   型引数の投機パース
+crates/oxc_parser/src/cursor.rs            638行   checkpoint / rewind / lookahead
+crates/oxc_parser/src/lexer/typescript.rs   53行   山括弧の再字句解析。全部読めます
+crates/oxc_parser/src/js/statement.rs      932行   文の入口。トレースの出発点
+crates/oxc_parser/src/js/arrow.rs          410行   今回は空振りする側として登場
+```
+
+## 今回の題材
+
+前回は型の文法を上から下まで降りました。静かなものでしたね。今回は式の側から入ります。同じ形なのに結果が違う2行を、先頭から歩かせてみます。
 
 ```ts
 f<T>(x);
