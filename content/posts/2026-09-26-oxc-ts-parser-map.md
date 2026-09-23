@@ -284,7 +284,21 @@ Kind::LAngle if !self.source_type.is_jsx() => {
 `<` が先に JSX として取られて腕に入れないからでした。TypeScript 側の事情ではなく、
 字句の取り合いに負けているだけ、という理解になります。
 
-同じ判定は `parse_simple_unary_expression`(`js/expression.rs:1272`)にもあって、
+同じ判定は `parse_simple_unary_expression`(`js/expression.rs:1272`)にもあります。
+
+```rust
+// js/expression.rs:1272 parse_simple_unary_expression
+Kind::LAngle => {
+    if self.source_type.is_jsx() {
+        return self.parse_jsx_expression();
+    }
+    if self.is_ts {
+        return self.with_pure_comments(Self::parse_ts_type_assertion);
+    }
+    self.parse_jsx_in_non_jsx_error()
+}
+```
+
 こちらはガードを使わず、腕の中で `is_jsx()` を先に見てから `is_ts` を見る書き方でした。
 動きは同じですが、書き方が揃っていません。こういう二重管理は oxc のあちこちにあって、
 `at_start_of_ts_declaration` の高速経路とその worker も同じ形をしています。
@@ -307,5 +321,5 @@ oxc は 42 クレートのツールチェーンで、今読んでいるのはそ
 拡張子を変えて同じコードを食わせたとき、はねられるもの、木だけが静かに変わるもの、
 読んだ後にエラーを足されるものの3種類が出たのは、開け閉めの仕方が場所ごとに違うからでした。
 
-地図が引けたので、次回からはまた細い道に戻ります。第4回では、いま数えた
-2,654 行のうち大きいほうにあたる型の世界の難所を扱う予定です。
+地図が引けたので、次回からはまた細い道に戻ります。第4回では視点をもう一段変えて、
+このパーサーが吐く AST の形が、誰の仕様に合わせて作られているのかを見ます。
