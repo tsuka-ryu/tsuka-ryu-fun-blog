@@ -314,29 +314,63 @@ fn parse_non_array_type(&mut self) -> TSType<'a> {
 
 ここまでが地図です。実際に `type A = string | number;` を流してみます。
 
-トークン列は `type` / `A` / `=` / `string` / `|` / `number` / `;` ですね。`=` の後から追いかけます。
+トークン列は `type` / `A` / `=` / `string` / `|` / `number` / `;` ですね。まず `type A =` まで、TS固有の文の世界（`ts/statement.rs`）から見ます。`A` はここでは型ではなく、ただの識別子として読まれます。
 
-1. 入口の15行に入る。現在のトークンは `string` なので、関数型の判定（86行）は `<` でも `new` でも `abstract` でも `(` でもなく即 false。はしごに降ります
-2. `parse_union_type_or_higher`（245行）が `Kind::Pipe` を持って本体（252行）を呼ぶ
-3. 261行で先頭の区切り記号を食べようとするが無いので、フラグは false のまま
-4. 263行で1つ下を呼ぶ。intersection（241行）、type_operator（282行）と素通りして、postfix（358行）へ
-5. 360行で `parse_non_array_type`（411行）を呼ぶ。match がキーワード型の腕に当たる。ここで次のトークンが `.` かどうかだけ覗いて（425行）、名前空間の頭として使われていないことを確認してから `parse_keyword_type`（508行）へ。TSStringKeyword が1個できます
-6. 後置の段のループに戻る。現在のトークンは `|` で、どの腕にも当たらないのでそのまま返す。type_operatorもintersectionも、自分の演算子ではないのでそのまま返す
-7. union の264行に戻ってくる。いま `|` にいるので、ここで初めてリストを作る。266行からの while で、区切り記号を食べては次の要素を読むのを繰り返す
-8. `number` について 4 から 6 が再演され、TSNumberKeyword ができる
-9. 274行で TSUnionType が組み上がる
+```
+parse_statement_list_item                現在のトークンは type
+ └ at_start_of_ts_declaration            次の A が束縛できる識別子、同じ行 → true
+ └ parse_ts_declaration_statement
+   └ parse_declaration
+     └ parse_ts_type_alias_declaration   type A を食べ、= を expect
+```
+
+ここまでで `type A =` を消費し終わりました。174行で `parse_ts_type()` を呼びます。ここからが型の世界です。現在のトークンは `string` になっています。
+
+```
+parse_ts_type                              関数型の判定（86行）は false。はしごに降ります
+ └ parse_union_type_or_higher              Kind::Pipe を持って本体（252行）を呼ぶ
+   先頭に | は無いので has_leading_operator は false
+   └ parse_constituent_type() を呼ぶ（まず1個目の要素が欲しい）
+     └ parse_intersection_type_or_higher
+       └ parse_type_operator_or_higher   keyof等ではないので postfix へ素通り
+         └ parse_postfix_type_or_higher
+           └ parse_non_array_type          match がキーワード型の腕に当たる
+             └ parse_keyword_type          TSStringKeyword ができる
+   ← "TSStringKeyword" を1個目の要素として受け取る
+   現在のトークンは | → ここで初めて union だと分かる。2個目の要素を読みに、また同じ経路を降りる
+   └ parse_constituent_type() をもう一度呼ぶ（さっきと同じ経路）→ TSNumberKeyword
+   ← types = [TSStringKeyword, TSNumberKeyword] から TSUnionType を組み立てる（274行）
+```
+
+[oxc本体](https://github.com/oxc-project/oxc)をクローンして、そのリポジトリの中で次のように流すと、実際の出力を確認できます。
+
+```bash
+echo 'type A = string | number;' > /tmp/check.ts
+cargo run -q -p oxc_parser --example parser -- /tmp/check.ts --estree
+```
 
 実際の出力がこれです。
 
 ```json
 {
-  "type": "TSUnionType",
-  "types": [
-    { "type": "TSStringKeyword", "start": 9, "end": 15 },
-    { "type": "TSNumberKeyword", "start": 18, "end": 24 }
-  ],
-  "start": 9,
-  "end": 24
+  "type": "Program",
+  "body": [
+    {
+      "type": "TSTypeAliasDeclaration",
+      "id": { "type": "Identifier", "name": "A" },
+      "typeAnnotation": {
+        "type": "TSUnionType",
+        "types": [
+          { "type": "TSStringKeyword", "start": 9, "end": 15 },
+          { "type": "TSNumberKeyword", "start": 18, "end": 24 }
+        ],
+        "start": 9,
+        "end": 24
+      },
+      "start": 0,
+      "end": 25
+    }
+  ]
 }
 ```
 
@@ -344,7 +378,16 @@ fn parse_non_array_type(&mut self) -> TSType<'a> {
 
 ### 段を降りても中間ノードは積もらない
 
-いま5段降りたわけですが、できあがった木は2段しかありません。264行の条件が効いていて、区切り記号が1個も無ければ包むのをやめ、下から受け取った型をそのまま返すからです（279行）。
+いま5段降りたわけですが、できあがった木は2段しかありません。さっきの `parse_union_type_or_intersection_type` を、条件のところだけ抜き出します。
+
+```rust
+let has_leading_operator = self.eat(kind);   // 先頭に | があったかどうかのフラグ
+let mut ty = parse_constituent_type(self);   // まず1個読む
+if self.at(kind) || has_leading_operator {   // ここが効いている
+    /* ... types に集めて TSUnionType を組み立てる ... */
+}
+ty   // | が1個も無ければ、1個目の型をそのまま返す
+```
 
 確かめてみます。
 
@@ -352,27 +395,55 @@ fn parse_non_array_type(&mut self) -> TSType<'a> {
 type A = string;
 ```
 
-これの typeAnnotation は TSStringKeyword が直に来ます。union も intersection も前置も後置も全部通過しているのに、痕跡が残らない。段の数だけ無駄なノードが積み上がるような作りにはなっていません。
+```json
+{
+  "type": "TSTypeAliasDeclaration",
+  "typeAnnotation": { "type": "TSStringKeyword", "start": 9, "end": 15 },
+  "start": 0,
+  "end": 16
+}
+```
 
-ついでに、この条件にはもう1つ枝があります。261行で先頭の区切り記号を食べたときのフラグで、これが立っていると後続に区切りが無くても包みます。
+typeAnnotation に TSStringKeyword が直に来ます。union も intersection も前置も後置も全部通過しているのに、痕跡が残らない。段の数だけ無駄なノードが積み上がるような作りにはなっていません。
+
+ついでに、この条件にはもう1つ枝があります。`has_leading_operator`（1行目）が立っていると、後続に区切りが無くても包みます。
 
 ```text
 type A = | string;
 ```
 
-これは要素が1つだけの TSUnionType になりました。ユニオンを縦に並べて書くときの、先頭の縦棒ですね。書いた人が「これはユニオンです」と表明しているので、そのとおりの木にする、という扱いになっています。
+```json
+{
+  "type": "TSTypeAliasDeclaration",
+  "typeAnnotation": {
+    "type": "TSUnionType",
+    "types": [{ "type": "TSStringKeyword", "start": 11, "end": 17 }],
+    "start": 9,
+    "end": 17
+  },
+  "start": 0,
+  "end": 18
+}
+```
+
+これは要素が1つだけの TSUnionType になりました。tscでも普通に通ります。
+
+先頭の縦棒は、ユニオン型を複数行に分けて書くときの記法です。
+
+```text
+type A =
+  | string
+  | number
+  | boolean;
+```
+
+各行の頭を `|` で揃えておくと、要素が増えたときの変更差分がきれいになります（末尾に `|` を置く書き方だと、最後の行だけ形が変わって diff が汚れます）。`type A = | string;` は、この書き方の要素が1個しかない最小ケースというだけです。書いた人が `|` を書いた時点でユニオンとして扱う、という設計のおかげで、1行でも複数行でも同じルールで成立しています。
 
 ## まとめ
 
 - 型エイリアスの右辺は `parse_ts_type`（`ts/types.rs:15`）から始まり、5段のはしごを降りて `parse_non_array_type`（411行）に着く
 - 優先順位の表はどこにも無く、どの関数がどの関数を呼ぶかがそのまま優先順位になっている。前置の段が後置の段を呼んでいるので、後置のほうが先に読み終わる
 - 段を通過しても、自分の演算子が出てこなければノードは作らない。`type A = string;` の結果は TSStringKeyword が1個だけ
-- 条件型が右結合になるのも同じ理屈で、偽側の枝が一番上を呼び直しているだけ
+- 条件型が右結合になるのも同じ理屈で、false側の枝が一番上を呼び直しているだけ
 
 今回は「素直な型は素直に読まれる」という話だけで終わりました。次回はその逆をやります。`f<T>(x);` という1行を先頭から通しで追って、先読みと投機パースとre-lexが全部出てくるところを見ていきます。型の側から入ったぶん今回は静かなものでしたが、次はレキサーまで巻き込んだ話になります。
-
-この記事で流した入力とASTのダンプは[リポジトリ](https://github.com/tsuka-ryu/compiler-workshop-rust)の `demos/oxc-step1/` に置いてあります。自分で走らせたいときは、oxc側で次のコマンドです。
-
-```bash
-cargo run -q -p oxc_parser --example parser -- foo.ts --estree
-```
