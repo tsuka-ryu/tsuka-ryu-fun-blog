@@ -12,6 +12,7 @@ tags: ["コンパイラ", "パーサー", "oxc", "TypeScript"]
 ```text
 crates/oxc_parser/src/ts/types.rs        1,690行   型の再帰下降。今回の主戦場
 crates/oxc_parser/src/ts/statement.rs      962行   型エイリアスの宣言。型の世界の入口
+crates/oxc_parser/src/js/statement.rs      932行   文の分岐。型の宣言へ渡す側
 ```
 
 ## 今回の題材
@@ -26,15 +27,57 @@ type A = string | number;
 
 先にオチを書いておきます。型の文法を読む部分は、教科書に出てくるそのままの再帰下降です。優先順位の段ごとに関数が1つあって、上の段が下の段を呼ぶ。本当にそれだけ。面白いのは、優先順位を書いた表がどこにも無いことです。どの関数がどの関数を呼ぶか、それ自体が優先順位になっています。
 
-今回出てくる関数は、ほぼ全部が `ts/types.rs` に入っています。型の文法はだいたいこの1ファイルで完結するので、以下で「何行」とだけ書いたら、このファイルの行番号だと思ってください。
+今回出てくる関数は、ほぼ全部が `ts/types.rs` に入っています。型の文法はだいたいこの1ファイルで完結します。
 
 ## 型の入口
 
-型エイリアスの宣言を読むのは `parse_ts_type_alias_declaration`（`ts/statement.rs:128`）です。やっていることは文法の見た目そのままで、`type` を食べ、名前を読み、型パラメータを読み、`=` を expect する（147行）。
+まず、そこに辿り着くまでの道から。文を1つ読むたびに通るのはこの経路です。
 
-そのすぐ後、174行で `parse_ts_type()` が呼ばれます。ここが型の世界の入口です。式のパーサーとは完全に別の再帰下降が、ここから丸ごと1個始まります。
+```text
+parse_program                          lib.rs
+└ parse_directives_and_statements      js/statement.rs:33    文を1つずつ読むループ
+  └ parse_statement_list_item          js/statement.rs:131   現在のトークンで文の種類を分岐
+    └ parse_ts_declaration_statement   ts/statement.rs:612   修飾子を食べる
+      └ parse_declaration              ts/statement.rs:640   もう一度、種類で分岐
+        └ parse_ts_type_alias_declaration   ts/statement.rs:128
+```
 
-余談ですが、`=` の右で1つだけ特別扱いされているものがあって、それが `intrinsic` です（150行から173行）。`type Uppercase<S> = intrinsic;` のように書く、tscの組み込み型専用のキーワードですね。ここだけ入口の手前で分岐されていて、それ以外はすべて `parse_ts_type` に流れます。
+分岐が2回あるのが目を引きます。1回目の `parse_statement_list_item` はこうなっています。
+
+```rust
+// js/statement.rs:131 parse_statement_list_item
+match self.cur_kind() {
+    // ... if / for / return など、JS の文の腕がひととおり並んだあと
+    Kind::Interface | Kind::Type | Kind::Module | Kind::Namespace
+    | Kind::Declare | Kind::Enum
+    | Kind::Private | Kind::Protected | Kind::Public
+    | Kind::Abstract | Kind::Accessor | Kind::Static | Kind::Readonly | Kind::Global
+        if self.is_ts && self.at_start_of_ts_declaration() =>
+    {
+        self.parse_ts_declaration_statement(self.cur_start(), stmt_ctx)
+    }
+    _ => self.parse_expression_or_labeled_statement(),
+}
+```
+
+14種類が1本の腕にまとまっていて、宣言の頭（`type` `interface` `enum`）と修飾子（`declare` `public` `readonly`）が同居しています。なのでこの時点では「TSの宣言が始まるらしい」までしか分かりません。腕が呼んでいる `parse_ts_declaration_statement` も、名前のわりに種類を決めず、やるのは修飾子を食べ尽くすことだけです。食べ終わってから、2回目の `parse_declaration` でようやく本体の種類が決まります。
+
+その腕にはガードが付いていて、それが `at_start_of_ts_declaration`（`ts/statement.rs:863`）です。`type` はJSの予約語ではないので変数名に使えます。`type = 1;` と書けばただの代入で、実際そう読まれます。
+
+```rust
+// ts/statement.rs:863 at_start_of_ts_declaration
+match self.cur_kind() {
+    // ...
+    // `interface I`  `type T = …`（キーワード + 同じ行の、束縛できる識別子）
+    Kind::Interface | Kind::Type => {
+        let next = self.lexer.peek_token();
+        next.kind().is_binding_identifier() && !next.is_on_new_line()
+    }
+    // ...
+}
+```
+
+そして `parse_ts_type_alias_declaration`（`ts/statement.rs:128`）が、174行で `parse_ts_type()` を呼びます。ここが型の世界の入口です。
 
 ## 降下のはしご
 
@@ -49,21 +92,39 @@ parse_ts_type                          ts/types.rs:15   conditional (extends ...
          └ parse_non_array_type        ts/types.rs:411  プライマリ型の大分配器
 ```
 
-最初に引っかかるのが、intersectionを読む関数のほうがファイル上では先に定義されていることです（241行と245行）。はしごの順序とソースの順序が逆になっているので、上から読んでいくと一瞬混乱します。
-
 段ごとに見ていきます。
 
 ### 一番上は conditional を担当している
 
-はしごの先頭にいる `parse_ts_type` は、中身が30行で、3つのブロックに分かれます。
+はしごの先頭にいる `parse_ts_type` は、中身が30行しかありません。内容をコメントで追記しています。
 
-16行から18行が、関数型とコンストラクタ型への分岐。ここが該当すると、はしごを丸ごとバイパスして `parse_function_or_constructor_type`（46行）に飛びます。判定しているのは `is_start_of_function_type_or_constructor_type`（86行）で、現在のトークンが `<` か `new` なら即決、`abstract` なら次を覗くだけ、`(` のときだけ投機パースをします。
+```rust
+// ts/types.rs:15
+pub(crate) fn parse_ts_type(&mut self) -> TSType<'a> {
+    // 1. 関数型とコンストラクタ型は、はしごを丸ごとバイパスする
+    //    判定は < と new なら即決、abstract は次を1つ覗くだけ、( のときだけ投機パース
+    if self.is_start_of_function_type_or_constructor_type() {
+        return self.parse_function_or_constructor_type();
+    }
+    // 2. 1つ下の段を呼ぶ。はしごの定型部はこの1行だけ
+    let ty = self.parse_union_type_or_higher();
+    // 3. extends が続いていたら conditional 型として組み立てる
+    if !self.ctx.has_disallow_conditional_types()
+        && !self.cur_token().is_on_new_line()
+        && self.eat(Kind::Extends)
+    {
+        let extends_type = self.context_add(DisallowConditionalTypes, Self::parse_ts_type);
+        self.expect(Kind::Question);
+        let true_type = self.context_remove(DisallowConditionalTypes, Self::parse_ts_type);
+        self.expect_conditional_alternative(question_span);
+        let false_type = self.context_remove(DisallowConditionalTypes, Self::parse_ts_type);
+        return TSType::new_ts_conditional_type(/* ... */);
+    }
+    ty
+}
+```
 
-19行から20行が定型部で、1つ下の段を呼ぶだけ。
-
-そして21行から42行が、この関数自身の担当演算子である conditional です。`extends` を食べて、`?` を expect して、3つの枝をそれぞれ読む。
-
-ここで分かるのが、conditionalがunionより上にいるということです。つまり `A | B extends C ? X : Y` は「AまたはBがCを継承しているなら」と読まれます。合併型のほうが先に読み終わっていて、その結果がまるごと左辺になるからですね。優先順位の表がどこにもないのに、関数の呼び出し順がそのまま優先順位になっている。ここが今回の記事の肝です。
+ここで分かるのが、conditionalがunionより上にいるということです。つまり `A | B extends C ? X : Y` は `(A | B) extends C ? X : Y` と読まれます。合併型のほうが先に読み終わっていて、その結果がまるごと左辺になるからですね。優先順位の表がどこにもないのに、関数の呼び出し順がそのまま優先順位になっている。ここが今回の記事の肝です。
 
 なお conditional は、はしごのどの段にもぶら下がっていません。`parse_ts_type` が自分で `extends` の有無を見て、自分で3つの枝を読みます。はしごの外にいる特別扱いです。
 
@@ -90,7 +151,32 @@ fn parse_union_type_or_higher(&mut self) -> TSType<'a> {
 }
 ```
 
-中身が無くて、引数を変えて同じ本体を呼ぶだけ。`Self::parse_type_operator_or_higher` はメソッドを関数値として渡す書き方で、受け取り側の境界は `F: Fn(&mut Self) -> TSType<'a>`（258行）です。ジェネリクスなので単相化されて、関数ポインタ経由の間接呼び出しにはなりません。
+中身が無くて、引数を変えて同じ本体を呼ぶだけ。`Self::parse_type_operator_or_higher` はメソッドを関数値として渡す書き方です。受け取る側はこうなっています。
+
+```rust
+// ts/types.rs:252
+fn parse_union_type_or_intersection_type<F>(&mut self, kind: Kind, parse_constituent_type: F) -> TSType<'a>
+where
+    F: Fn(&mut Self) -> TSType<'a>,
+{
+    let has_leading_operator = self.eat(kind);      // 先頭の区切り記号があれば食べる
+    let mut ty = parse_constituent_type(self);      // 1つ下の段
+    if self.at(kind) || has_leading_operator {
+        let mut types = ArenaVec::from_value_in(ty, self);
+        while self.eat(kind) {                      // 区切りを食べては次の要素を読む
+            types.push(parse_constituent_type(self));
+        }
+        ty = match kind {
+            Kind::Pipe => TSType::new_ts_union_type(span, types, self),
+            Kind::Amp => TSType::new_ts_intersection_type(span, types, self),
+            _ => unreachable!(),
+        };
+    }
+    ty                                              // 区切りが無ければ、包まずそのまま返る
+}
+```
+
+境界が `F: Fn(&mut Self) -> TSType<'a>` なので、ジェネリクスとして単相化されます。関数ポインタ経由の間接呼び出しにはなりません。
 
 さっき「次にどの関数を呼ぶかがそのまま優先順位だ」と書きましたが、この2段はその配線を引数として外から差し込んでいる形になります。はしごの段そのものを、値として渡している。
 
@@ -100,11 +186,45 @@ fn parse_union_type_or_higher(&mut self) -> TSType<'a> {
 
 実体の `parse_type_operator`（295行）は、演算子を1つ食べたあと自分自身を再帰呼び出しします（299行）。なので `keyof` を重ねて書いた型も自然に通ります。前置演算子の段の定石ですね。
 
-後置を受け持つのは `parse_postfix_type_or_higher`（358行）で、こちらはループです。1つ下から型を1個受け取って、その後ろに `!` / `?` / `[]` / `[K]` が続く限り包み続けます。
+後置を受け持つのは `parse_postfix_type_or_higher`（358行）で、こちらはループです。
 
-ループの条件が `while !self.cur_token().is_on_new_line()`（362行）なのが地味に効いていて、後置の記号は必ず同じ行になければ拾われません。
+```rust
+// ts/types.rs:358
+fn parse_postfix_type_or_higher(&mut self) -> TSType<'a> {
+    let mut ty = self.parse_non_array_type();        // 1つ下から型を1個もらう
+    while !self.cur_token().is_on_new_line() {       // 後置は同じ行にしか付かない
+        match self.cur_kind() {
+            Kind::Bang => { /* T! で包む */ }
+            Kind::Question => {
+                // 次が型の始まりなら、これは conditional の `?` なので手を出さない
+                if self.lookahead(|p| { p.bump_any(); p.is_start_of_type(false) }) {
+                    return ty;
+                }
+                /* T? で包む */
+            }
+            Kind::LBrack => {
+                self.bump_any();
+                if self.is_start_of_type(false) {
+                    let index_type = self.parse_ts_type();   // T[K]
+                    self.expect(Kind::RBrack);
+                    ty = /* indexed access */;
+                } else {
+                    self.expect(Kind::RBrack);               // T[]
+                    ty = /* array */;
+                }
+            }
+            _ => return ty,
+        }
+    }
+    ty
+}
+```
 
-そして `?` の腕（373行）には1トークンの先読みが入っています。`?` の次が型の始まりなら、これは後置の記号ではなく conditional の `?` だと判断して、その場で返してしまう（375行から379行）。後置の `?` はJSDoc由来の書き方なので、TSの本流である conditional のほうに優先権があります。
+ループの条件が地味に効いていて、後置の記号は必ず同じ行になければ拾われません。
+
+`?` の腕には1トークンの先読みが入っています。`?` の次が型の始まりなら、後置の記号ではなく conditional の `?` だと判断して、その場で返してしまう。後置の `?` はJSDoc由来の書き方なので、TSの本流である conditional のほうに優先権があります。
+
+`[` の腕も見どころで、開き括弧を食べたあと次が型の始まりかどうかで、添字アクセスと配列型に分かれます。同じ入口を通っていて、`[` の次の1トークンだけで決まる。ループなので `string[][]` のような入れ子も、2周するだけで自然に扱えます。
 
 ### 一番下は大きな match
 
@@ -174,34 +294,10 @@ type A = | string;
 
 これは要素が1つだけの TSUnionType になりました。ユニオンを縦に並べて書くときの、先頭の縦棒ですね。書いた人が「これはユニオンです」と表明しているので、そのとおりの木にする、という扱いになっています。
 
-## もう1つ、配列型
-
-配列型も追ってみます。題材は `type A = string[];` です。
-
-降りるところまでは同じで、面白いのは後置の段（358行）に戻ってきてからです。分配器が TSStringKeyword を返したあと、ループが `[` を見つけます（389行）。
-
-開き括弧を食べたら、次が型の始まりかどうかを `is_start_of_type` で判定します（391行）。型ならインデックスアクセス（394行）、そうでなければ閉じ括弧を expect して配列型（402行）。つまり配列と添字アクセスは同じ入口を通っていて、`[` の次の1トークンだけで分かれています。
-
-ループなので、入れ子も自然に扱えます。
-
-```ts
-type A = string[][];
-```
-
-これは TSArrayType が2段に入れ子になって、その一番内側に TSStringKeyword が来る木になります。ループを2周しただけですね。
-
-そして、はしごの順序が木の形に出ている例がこれです。
-
-```ts
-type A<T> = keyof T[];
-```
-
-出力は TSTypeOperator の下に TSArrayType が来ます。つまり `keyof (T[])` と読まれていて、`(keyof T)[]` ではない。前置の段が後置の段より上にいるので、後置のほうが先に読み終わる。関数の並び順が、そのまま結合の強さになっています。
-
 ## まとめ
 
 - 型エイリアスの右辺は `parse_ts_type`（`ts/types.rs:15`）から始まり、5段のはしごを降りて `parse_non_array_type`（411行）に着く
-- 優先順位の表はどこにも無く、どの関数がどの関数を呼ぶかがそのまま優先順位になっている。`keyof T[]` が `keyof (T[])` と読まれるのは、前置の段が後置の段を呼んでいるから
+- 優先順位の表はどこにも無く、どの関数がどの関数を呼ぶかがそのまま優先順位になっている。前置の段が後置の段を呼んでいるので、後置のほうが先に読み終わる
 - 段を通過しても、自分の演算子が出てこなければノードは作らない。`type A = string;` の結果は TSStringKeyword が1個だけ
 - 条件型が右結合になるのも同じ理屈で、偽側の枝が一番上を呼び直しているだけ
 
