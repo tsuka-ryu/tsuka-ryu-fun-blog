@@ -16,6 +16,12 @@ export interface PostFrontmatter {
   date: string;
   description?: string;
   tags?: string[];
+  /**
+   * true の記事は本番ビルドでは丸ごと除外する（ルートも生成されず、一覧・タグ・
+   * RSS・検索・OGP のどこにも出てこない）。`pnpm run dev` のときだけ、レビュー用に
+   * 通常の記事と同じように見える。パース・lint 自体は除外前に必ず通す。
+   */
+  draft?: boolean;
 }
 
 export interface Post {
@@ -118,13 +124,18 @@ function assertFrontmatter(fm: unknown, path: string): PostFrontmatter {
   if (typeof fm !== "object" || fm === null) {
     throw new Error(`[content] ${path}: frontmatter がありません`);
   }
-  const { title, date } = fm as Record<string, unknown>;
+  const { title, date, draft } = fm as Record<string, unknown>;
   if (typeof title !== "string" || title.length === 0) {
     throw new Error(`[content] ${path}: frontmatter.title が必要です`);
   }
   if (typeof date !== "string" || !DATE_PATTERN.test(date)) {
     throw new Error(
       `[content] ${path}: frontmatter.date は YYYY-MM-DD 形式で書いてください（実際: ${String(date)}）`,
+    );
+  }
+  if (draft !== undefined && typeof draft !== "boolean") {
+    throw new Error(
+      `[content] ${path}: frontmatter.draft は真偽値で書いてください（実際: ${JSON.stringify(draft)}）`,
     );
   }
   return fm as PostFrontmatter;
@@ -167,6 +178,10 @@ const posts: Post[] = Object.entries(rawPosts)
       body: prepared.content,
     };
   })
+  // draft は本番ビルドでは除外する。パース・lint は上の map() で全記事に対して
+  // 済んでいるので、公開前でも壊れた記事は検知できる。`pnpm run dev` のときだけ
+  // import.meta.env.DEV が true になり、draft も通常の記事と同じように見える。
+  .filter((post) => !post.frontmatter.draft || import.meta.env.DEV)
   // 新しい順。
   .sort((a, b) => (a.frontmatter.date < b.frontmatter.date ? 1 : -1));
 
