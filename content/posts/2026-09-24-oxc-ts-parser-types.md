@@ -92,7 +92,17 @@ parse_ts_type                          ts/types.rs:15   conditional (extends ...
          └ parse_non_array_type        ts/types.rs:411  プライマリ型の大分配器
 ```
 
-段ごとに見ていきます。
+ここで注意したいのが、これは「順番に処理される段階」ではなく「呼び出しの入れ子」だということです。上の段の関数は、下の段の関数を呼んで結果を待つだけで、自分の判定は結果が返ってきてから行います。なので `keyof T | U` を読むときは、こういう順で呼び出しが積まれます。
+
+```
+parse_union_type_or_higher            まず1個の要素が欲しい。| の有無はまだ見ていない
+ └ parse_intersection_type_or_higher  同じく、まず1個の要素が欲しい
+   └ parse_type_operator_or_higher    keyof を見つけて食べ、続きをまた自分で読む → "keyof T"
+ ← "keyof T" を1個の要素として受け取る。ここでようやく次のトークン | を見て、union だと分かる
+ → 2個目の要素 U を読みに、また同じ経路を降りる
+```
+
+union が「`|` 区切りの型かどうか」を判定するのは、1個目の要素を読み終えたあとです。要素を読む作業そのものは、intersectionやprefix、postfixに丸投げしています。段ごとに見ていきます。
 
 ### 一番上は conditional を担当している
 
@@ -124,13 +134,21 @@ pub(crate) fn parse_ts_type(&mut self) -> TSType<'a> {
 }
 ```
 
-ここで分かるのが、conditionalがunionより上にいるということです。つまり `A | B extends C ? X : Y` は `(A | B) extends C ? X : Y` と読まれます。合併型のほうが先に読み終わっていて、その結果がまるごと左辺になるからですね。優先順位の表がどこにもないのに、関数の呼び出し順がそのまま優先順位になっている。ここが今回の記事の肝です。
+ここで分かるのが、conditionalの判定はunionを読み終えたあとに来る、ということです。コード中の2で下の段の結果を受け取り、3でその結果に対して `extends` を見ています。つまり `A | B extends C ? X : Y` は `(A | B) extends C ? X : Y` と読まれます。合併型のほうが先に読み終わっていて、その結果がまるごと左辺になるからですね。優先順位の表がどこにもないのに、関数の呼び出し順がそのまま優先順位になっている。これが再帰下降パーサーです。
 
 なお conditional は、はしごのどの段にもぶら下がっていません。`parse_ts_type` が自分で `extends` の有無を見て、自分で3つの枝を読みます。はしごの外にいる特別扱いです。
 
-結合の向きも、ここに書いてあるとおりになります。偽側の枝がまた一番上を呼ぶので（33行）、`T extends A ? X : T extends B ? Y : Z` は放っておいても右結合になる。右結合だと宣言している場所はどこにもなくて、再帰の向きがそのまま結合の向きです。
+結合の向きも、このコードだけで分かります。falseの場合（`false_type`）を読むときも、呼んでいるのはまた同じ `parse_ts_type` です。なので `T extends A ? X : T extends B ? Y : Z` は `T extends A ? X : (T extends B ? Y : Z)` と読まれます。
 
-もう1つ、条件の2行目（22行）には改行の判定が入っています。conditionalの `extends` の手前に改行があったら、そもそも条件型として読まない、というガードです。TSでは予約語もメンバー名に使えるので、セミコロン無しで行が終わった直後に `extends` で始まる行が来ると、conditionalの開始なのか次のメンバーの名前なのか決まらなくなる。改行が来たらメンバー名の側に倒す、というASI的な裁定になっています。
+もう1つ、conditionalの条件には改行の判定も入っています。
+
+```rust
+    if !self.ctx.has_disallow_conditional_types()
+        && !self.cur_token().is_on_new_line()   // ここ
+        && self.eat(Kind::Extends)
+```
+
+`extends` の手前に改行があったら、そもそも条件型として読まない、というガードです。TSでは予約語もメンバー名に使えるので、行が終わった直後に `extends` で始まる行が来ると、conditionalの開始なのか次のメンバーの名前なのか決まらなくなる。改行が来たらメンバー名の側に倒す、という裁定です。本家の `parseType`（ts-go `parser.go:2659`）にも `!p.hasPrecedingLineBreak() && p.parseOptional(ast.KindExtendsKeyword)` という同じ形があります。tscがそう決めている文法を、oxcはそのまま移植しているようです。
 
 代償として、conditionalの `extends` を行頭に折り返す書き方ができません。フォーマッタをかけたときに `T extends` が必ず同じ行に残るのは、整形の好みではなく文法上の制約だったわけですね。
 
@@ -182,17 +200,38 @@ where
 
 ### 前置の段と後置の段
 
+中置の2段（union / intersection）からはしごを2段降りて、`parse_type_operator_or_higher`（前置演算子。`keyof` など）と `parse_postfix_type_or_higher`（後置演算子。`!` `[]` など）です。
+
 前置演算子を受け持つのが `parse_type_operator_or_higher`（282行）です。`keyof` / `unique` / `readonly` / `infer` の4つを、先頭トークンを見るだけで振り分けます。左端に演算子が来る形なので、先読みも投機も要りません。
 
-実体の `parse_type_operator`（295行）は、演算子を1つ食べたあと自分自身を再帰呼び出しします（299行）。なので `keyof` を重ねて書いた型も自然に通ります。前置演算子の段の定石ですね。
+実体はこうなっています。
 
-後置を受け持つのは `parse_postfix_type_or_higher`（358行）で、こちらはループです。
+```rust
+// ts/types.rs:295 parse_type_operator
+fn parse_type_operator(&mut self, operator: TSTypeOperatorOperator) -> TSType<'a> {
+    self.bump_any();                                 // 演算子を1つ食べる
+    let ty = self.parse_type_operator_or_higher();    // 自分自身を再帰呼び出し（3つとも共通）
+    if operator == TSTypeOperatorOperator::Readonly
+        && !matches!(ty, TSType::TSArrayType(_))
+        && !matches!(ty, TSType::TSTupleType(_))
+    {
+        self.error(diagnostics::readonly_in_array_or_tuple_type(operator_span));
+    }
+    TSType::new_ts_type_operator_type(/* ... */)
+}
+```
+
+自分自身を再帰呼び出ししているので、`keyof` を重ねて書いた型も自然に通ります。前置演算子の段の定石ですね。
+
+ただし `readonly` だけ、再帰から戻ったあとに事後チェックが付いています。返ってきた型が配列型でもタプル型でもなければエラーです。`readonly string[];` は通り、`readonly string;` はエラーになります。構文としては3つとも同じ道を通りますが、意味の制約は `readonly` にしかありません。
+
+後置を受け持つのは `parse_postfix_type_or_higher`（358行）で、以下は構造を抜粋したコードです。
 
 ```rust
 // ts/types.rs:358
 fn parse_postfix_type_or_higher(&mut self) -> TSType<'a> {
     let mut ty = self.parse_non_array_type();        // 1つ下から型を1個もらう
-    while !self.cur_token().is_on_new_line() {       // 後置は同じ行にしか付かない
+    while !self.cur_token().is_on_new_line() {       // 改行を挟まず同じ行にあるときだけ拾う
         match self.cur_kind() {
             Kind::Bang => { /* T! で包む */ }
             Kind::Question => {
@@ -220,7 +259,7 @@ fn parse_postfix_type_or_higher(&mut self) -> TSType<'a> {
 }
 ```
 
-ループの条件が地味に効いていて、後置の記号は必ず同じ行になければ拾われません。
+ループの条件が地味に効いていて、`!` `?` `[` のような後置の記号は、直前の型と改行を挟まずに同じ行に書かれているときだけ拾われます。本家の `parsePostfixTypeOrHigher`（ts-go `parser.go:2767`）にも `for !p.hasPrecedingLineBreak()` という同じループがあって、腕の並び順まで一致しています。tscがそう決めている文法を、oxcはそのまま移植しているようです。
 
 `?` の腕には1トークンの先読みが入っています。`?` の次が型の始まりなら、後置の記号ではなく conditional の `?` だと判断して、その場で返してしまう。後置の `?` はJSDoc由来の書き方なので、TSの本流である conditional のほうに優先権があります。
 
@@ -228,11 +267,40 @@ fn parse_postfix_type_or_higher(&mut self) -> TSType<'a> {
 
 ### 一番下は大きな match
 
-はしごの底、`parse_non_array_type`（411行）まで降りると、あとは現在のトークンで分配するだけの大きな match です。腕はちょうど17本あって、キーワード型、リテラル型、`{`、`[`、`(`、`import`、`typeof`、`asserts`、テンプレート型と並び、どれにも当たらなければ `parse_type_reference`（822行）に行きます。
+はしごの底、`parse_non_array_type`（411行）まで降りると、あとは現在のトークンで分配するだけの大きな match です。
+
+```rust
+// ts/types.rs:411 parse_non_array_type
+fn parse_non_array_type(&mut self) -> TSType<'a> {
+    match self.cur_kind() {
+        Kind::Any | Kind::Unknown | Kind::String | Kind::Number | Kind::BigInt
+        | Kind::Symbol | Kind::Boolean | Kind::Undefined | Kind::Never
+        | Kind::Object | Kind::Null => { /* キーワード型 */ }
+        Kind::Question => self.parse_js_doc_unknown_or_nullable_type(),
+        Kind::Bang => self.parse_js_doc_non_nullable_type(),
+        Kind::Str | Kind::True | Kind::False => self.parse_literal_type(),
+        kind if kind.is_number() => self.parse_literal_type(),
+        Kind::NoSubstitutionTemplate => { /* テンプレートリテラル型 */ }
+        Kind::Minus => { /* -1 のような負のリテラル型 */ }
+        Kind::Void => { /* ... */ }
+        Kind::This => { /* this / this is T */ }
+        Kind::Typeof => self.parse_type_query(),
+        Kind::LCurly => { /* オブジェクト型 or マップ型 */ }
+        Kind::LBrack => self.parse_tuple_type(),
+        Kind::LParen => self.parse_parenthesized_type(),
+        Kind::Import => TSType::TSImportType(self.parse_ts_import_type()),
+        Kind::Asserts => { /* asserts x is T */ }
+        Kind::TemplateHead => self.parse_template_type(false),
+        _ => self.parse_type_reference(),   // 17本目。どれにも当たらなければここ
+    }
+}
+```
+
+並びはキーワード型、リテラル型、`{`、`[`、`(`、`import`、`typeof`、`asserts`、テンプレート型で、どれにも当たらなければ最後の `_` から `parse_type_reference`（822行）に行きます。
 
 この match の腕の一覧は、そのまま「型が始まれるトークンの一覧」として読めます。逆に、ここに無いトークンから型は始まらない。
 
-たとえば `<` の腕がありません。これは「`<` で始まる型は関数型しかない」ことの裏返しで、そういう型ははしごに降りてくる前に、16行の分岐で拾われています。
+たとえば `<` の腕がありません。これは「`<` で始まる型は関数型しかない」ことの裏返しで、そういう型ははしごに降りてくる前に、`parse_ts_type`（`is_start_of_function_type_or_constructor_type` の分岐）で拾われています。
 
 ### はしごは一直線ではない
 
