@@ -86,7 +86,9 @@ const LINT_OPTIONS: JsMarkdownLintOptions = {
 // コードブロック直後の単独空行を「連続空行」と誤判定する不具合があり、コードを
 // 含む記事が正しい Markdown でもビルド不能になる（最小再現: `## A` →
 // ```code``` → 空行 → `## B`）。warning 表示のみに留め、ビルドは止めない。
-const NON_FATAL_RULES = new Set(["max-consecutive-blank-lines"]);
+// repeated-punctuation は英文引用に含まれる `??` や `!?` を誤字と判定するが、
+// 引用は原文のまま載せたいので書き換えようがない。同じく warning 表示のみにする。
+const NON_FATAL_RULES = new Set(["max-consecutive-blank-lines", "repeated-punctuation"]);
 
 function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
   return diagnostics

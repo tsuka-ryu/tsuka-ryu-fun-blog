@@ -1073,3 +1073,34 @@ React 固有のアンチパターンを検出する `react-doctor`（Oxlint ベ�
 - **補足**: 本リポのビルドは環境変数を一切参照しない（`process.env` / `import.meta.env` の使用なし）。
   絶対 URL は `src/constants.ts` の `SITE_URL`（`https://tsuka-ryu.dev`）固定。デプロイ後の確認は
   トップ表示・`/sitemap.xml`・RSS（`/feed`）・OG 画像のプレビュー。
+
+### 2026-09-23 — `repeated-punctuation` を非致命に降格（英文引用の `??` でビルドが落ちる）
+
+記事中で英語の原文を引用したとき、末尾の `??` が `repeated-punctuation`（誤字らしい連続した
+句読点）に引っかかってビルドが落ちた。引用は原文のまま載せたいので、本文側では直しようがない。
+
+- **対処**: `src/content.ts` の `NON_FATAL_RULES` に `repeated-punctuation` を追加。
+  `max-consecutive-blank-lines` と同じ扱いで、warning は表示しつつビルドは止めない。
+- **却下した代替 1**: `LINT_OPTIONS` の `repeatedPunctuation` を `false` にする。
+  検出自体が消えて、本当の誤字（`。。` など）も拾えなくなる。降格なら警告は残る。
+- **却下した代替 2**: 引用をインラインコード（バッククォート）で囲んで検出を回避する。
+  lint は通るが、地の文の引用が等幅で浮く。体裁のために引用の書き方を曲げるのは本末転倒。
+- **補足**: このルールは引用ブロック（`>`）の中でも発火する。Markdown の構造ではなく
+  テキストを見ているため、引用であることを理由に除外はされない。
+
+### 2026-09-23 — `.md` を `assetsInclude` に追加（記事を保存すると HMR が落ちる）
+
+`content/posts/*.md` を編集して保存するたび、dev サーバーの rsc 環境が Internal Server Error を出して
+HMR が失敗していた。エラーは `Failed to parse source for import analysis because the content contains
+invalid JS syntax.`。
+
+- **原因**: `src/content.ts` は `import.meta.glob("../content/posts/*.md", { query: "?raw" })` で
+  記事を文字列として読んでいる。ビルド時はこれで問題ないが、HMR で再読み込みされるときに
+  `?raw` が付かない素の `.md` として要求されることがあり、Vite が JS として解析しようとして落ちる。
+- **対処**: `vite.config.ts` に `assetsInclude: ["**/*.md"]` を追加。`.md` をアセット扱いにすると
+  JS としての解析対象から外れる。Vite のエラーメッセージ自身がこの対処を案内している。
+- **確認**: 修正前は dev サーバーに接続した時点で毎回エラー、修正後は記事を保存しても
+  `hot updated` だけが出てエラーは 0 件。`pnpm build` の出力は変わらず（記事 17 本、
+  `.md` がアセットとして `dist/` に出力されることもない）。
+- **却下した代替**: `?raw` をやめて Markdown 用のプラグインを入れる案。パースは ox-content
+  （ネイティブ）に寄せる構成なので、Vite 側に別の Markdown 処理を増やすと二重になる。
