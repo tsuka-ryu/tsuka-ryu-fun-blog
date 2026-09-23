@@ -1073,3 +1073,17 @@ React 固有のアンチパターンを検出する `react-doctor`（Oxlint ベ�
 - **補足**: 本リポのビルドは環境変数を一切参照しない（`process.env` / `import.meta.env` の使用なし）。
   絶対 URL は `src/constants.ts` の `SITE_URL`（`https://tsuka-ryu.dev`）固定。デプロイ後の確認は
   トップ表示・`/sitemap.xml`・RSS（`/feed`）・OG 画像のプレビュー。
+
+### 2026-09-23 — `repeated-punctuation` を非致命に降格（英文引用の `??` でビルドが落ちる）
+
+記事中で英語の原文を引用したとき、末尾の `??` が `repeated-punctuation`（誤字らしい連続した
+句読点）に引っかかってビルドが落ちた。引用は原文のまま載せたいので、本文側では直しようがない。
+
+- **対処**: `src/content.ts` の `NON_FATAL_RULES` に `repeated-punctuation` を追加。
+  `max-consecutive-blank-lines` と同じ扱いで、warning は表示しつつビルドは止めない。
+- **却下した代替 1**: `LINT_OPTIONS` の `repeatedPunctuation` を `false` にする。
+  検出自体が消えて、本当の誤字（`。。` など）も拾えなくなる。降格なら警告は残る。
+- **却下した代替 2**: 引用をインラインコード（バッククォート）で囲んで検出を回避する。
+  lint は通るが、地の文の引用が等幅で浮く。体裁のために引用の書き方を曲げるのは本末転倒。
+- **補足**: このルールは引用ブロック（`>`）の中でも発火する。Markdown の構造ではなく
+  テキストを見ているため、引用であることを理由に除外はされない。
