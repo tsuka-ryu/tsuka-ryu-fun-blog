@@ -222,15 +222,24 @@ if self.fatal_error.is_some() || !self.can_follow_type_arguments_in_expr() {
 }
 ```
 
-呼ばれている `can_follow_type_arguments_in_expr` (`ts/types.rs:955`) は、閉じたあとの1トークンを見るだけの判定です。中身を表にするとこうなります。
+呼ばれている `can_follow_type_arguments_in_expr` (`ts/types.rs:955`) は、閉じたあとの1トークンを見るだけの判定です。
 
-| 次のトークン                           | 判定                                                         |
-| -------------------------------------- | ------------------------------------------------------------ |
-| 丸括弧の開き、またはテンプレートの開始 | 型引数として確定                                             |
-| 山括弧の左右、プラス、マイナス         | 却下                                                         |
-| それ以外                               | 改行があるか、二項演算子か、式を開始できないトークンなら採用 |
+```rust
+// ts/types.rs:955 can_follow_type_arguments_in_expr
+fn can_follow_type_arguments_in_expr(&mut self) -> bool {
+    match self.cur_kind() {
+        Kind::LParen | Kind::NoSubstitutionTemplate | Kind::TemplateHead => true,
+        Kind::LAngle | Kind::RAngle | Kind::Plus | Kind::Minus => false,
+        _ => {
+            self.cur_token().is_on_new_line()
+                || self.is_binary_operator()
+                || !self.is_start_of_expression()
+        }
+    }
+}
+```
 
-3行目を裏返すと、直後に式が始まってしまうときだけ却下する、と読めます。`;` や `)` や `,` は式を開始しないので採用されます。つまり `f<T>;` は、丸括弧が続かなくても `TSInstantiationExpression` として通ります。
+`_` の腕を裏返すと、直後に式が始まってしまうときだけ却下する、と読めます。`;` や `)` や `,` は式を開始しないので採用されます。つまり `f<T>;` は、丸括弧が続かなくても `TSInstantiationExpression` として通ります。
 
 今回の `f<T>(x);` は1行目に当たります。閉じたあとが `(` なので、その場で確定です。トレースの `can_follow_type_arguments_in_expr [LParen @4]` の直後に rewind が無いのは、そういうことです。
 
