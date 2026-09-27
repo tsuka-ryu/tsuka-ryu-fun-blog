@@ -1,10 +1,11 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第3回 型引数つき呼び出しがASTになるまで
-description: たった1行の入力がパーサーの4ファイルを横断する様子を、実際に採ったトレースで先頭から追います。投機パースが成功する側と、巻き戻って比較演算になる側を並べました。
+description: 字面のそっくりな2行が、oxcのパーサーの中で型引数つきの呼び出しと比較演算に分かれていくまでを、実際に採ったトレースで先頭から追います。投機パースが成功する側と、巻き戻る側を並べました。
 date: 2026-09-26
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
-draft: true
 ---
+
+この記事では、`f<T>(x);` と `a < b > c;` という字面のそっくりな2行が、oxc のパーサーの中で型引数つきの呼び出しと比較演算に分かれていくまでを、実際に採ったトレースで先頭から追います。
 
 ## 今回読むファイル
 
@@ -14,14 +15,138 @@ draft: true
 crates/oxc_parser/src/js/expression.rs   1,799行   式のはしご。JSとTSの境界はここ
 crates/oxc_parser/src/ts/types.rs        1,690行   型引数の投機パース
 crates/oxc_parser/src/cursor.rs            638行   checkpoint / rewind / lookahead
-crates/oxc_parser/src/lexer/typescript.rs   53行   山括弧の再字句解析。全部読めます
+crates/oxc_parser/src/lexer/punctuation.rs  111行   閉じの > の読み直し
 crates/oxc_parser/src/js/statement.rs      932行   文の入口。トレースの出発点
 crates/oxc_parser/src/js/arrow.rs          410行   今回は空振りする側として登場
 ```
 
+## 下準備: トークン列を出すコマンドを1つ足す
+
+これから見ていくトークン列は、oxc にもとから入っているコマンドでは出せなさそうです。`crates/oxc_parser/examples/` を見ても、AST をダンプする `parser.rs` はありますが、トークン列を表示するものは見つけられませんでした。そこで同じ場所に、次のコマンドを1つ自分で足しました。
+
+````rust
+//! Dump the collected token stream of a file.
+//!
+//! ```bash
+//! cargo run -p oxc_parser --example tokens_dump -- file.ts
+//! ```
+
+use std::{fs, path::Path};
+
+use oxc_allocator::Allocator;
+use oxc_parser::{Parser, config::TokensParserConfig};
+use oxc_span::SourceType;
+
+fn main() -> Result<(), String> {
+    let name = std::env::args().nth(1).ok_or("usage: tokens_dump <file>")?;
+    let path = Path::new(&name);
+    let source_text = fs::read_to_string(path).map_err(|_| format!("Missing '{name}'"))?;
+    let source_type = SourceType::from_path(path).unwrap();
+
+    let allocator = Allocator::default();
+    let ret = Parser::new(&allocator, &source_text, source_type)
+        .with_config(TokensParserConfig)
+        .parse();
+
+    for token in &ret.tokens {
+        let text = &source_text[token.start() as usize..token.end() as usize];
+        println!("{:>3}..{:<3} {:<16} {text:?}", token.start(), token.end(), format!("{:?}", token.kind()));
+    }
+    Ok(())
+}
+````
+
+置き場所は `crates/oxc_parser/examples/tokens_dump.rs` です。`Parser` に `TokensParserConfig` を渡すと、パースを終えた `ParserReturn` の `tokens` フィールドに収集済みの列が残ります。それを1件ずつ、開始位置・終了位置・種類・元の文字列の順で表示しているだけの、10数行のコードです。
+
+実行するコマンドはこうです。
+
+```bash
+cargo run -p oxc_parser --example tokens_dump -- file.ts
+```
+
+ひとつ注意があります。これはレキサーを単独で走らせた結果ではなく、パースを終えたあとのトークン列です。oxc ではパーサーがレキサーを1トークンずつ呼び出していて、途中で「この `>` と `>` はつないで右シフトにする」「投機に失敗したので巻き戻す」といった判断を挟みます。`tokens` に残るのは、その判断をすべて反映した最終的な列です。
+
+たとえば次の2行を食わせると、同じ `>>` が別々のトークンになります。
+
+```text
+type B = Array<Array<number>>;
+a >> b;
+```
+
+```text
+ 27..28  RAngle           ">"
+ 28..29  RAngle           ">"
+ ...
+ 33..35  ShiftRight       ">>"
+```
+
+型の中の `>>` は閉じ山括弧2つ、式の中の `>>` は右シフト演算子1つです。レキサーだけでは文脈がわからないので、この区別はパーサーの判断があって初めて決まります。
+
+以降の節で出てくるトークン列は、すべてこのコマンドで手元でも再現できます。
+
+## 道具立て: 投機パース・先読み・re-lex
+
+題材に入る前に、事前知識としてパーサーの道具を3つ説明しておきます。このあと追うトレースには、これらの道具の名前がずっと出てきます。
+
+TypeScript の構文には、同じ字面なのに文脈で意味が変わるものがあります。たとえば `<` は、型引数の始まりにも比較演算子にもなります。どちらなのかは、閉じたあとに何が来るかまで読まないと決められません。oxc のパーサーはこういう場面のために3つの道具を持っていて、どれも `cursor.rs` に定義があります。
+
+### checkpoint と rewind
+
+1つ目は、読み位置の保存と復元です。
+
+```rust
+pub(crate) fn checkpoint(&mut self) -> ParserCheckpoint<'a> {
+    ParserCheckpoint {
+        lexer: self.lexer.checkpoint(),
+        cur_token: self.token,
+        prev_token_end: self.prev_token_end,
+        errors_pos: self.errors.len(),
+        fatal_error: self.fatal_error.take(),
+    }
+}
+
+pub(crate) fn rewind(&mut self, checkpoint: ParserCheckpoint<'a>) {
+    let ParserCheckpoint { lexer, cur_token, prev_token_end, errors_pos, fatal_error } =
+        checkpoint;
+
+    self.lexer.rewind(lexer);
+    self.token = cur_token;
+    self.prev_token_end = prev_token_end;
+    self.errors.truncate(errors_pos);
+    self.fatal_error = fatal_error;
+}
+```
+
+関数 `checkpoint` (`cursor.rs:309`) は、レキサーの位置、現在のトークン、直前のトークンの終端、その時点のエラーの件数などを1つの値にまとめて返します。`rewind` (`cursor.rs:329`) はそれを受け取って、全部を元に戻します。エラーもその件数まで `truncate` するので、試しに読んでいる間に出たエラーは一緒に消えます。
+
+これを使うと、解釈を決めきれない場所で次のように振る舞えます。まず checkpoint を取り、ひとまず片方の解釈で読み進める。うまくいけばそのまま採用し、だめなら rewind して別の解釈で読み直す。この試しに読んでみるやり方を投機パースと呼びます。
+
+### lookahead
+
+2つ目の先読みは、1つ目の上に乗った薄い皮です。
+
+```rust
+pub(crate) fn lookahead<U>(&mut self, predicate: impl Fn(&mut ParserImpl<'a, C>) -> U) -> U {
+    let checkpoint = self.checkpoint();
+    let answer = predicate(self);
+    self.rewind(checkpoint);
+    answer
+}
+```
+
+この `lookahead` (`cursor.rs:340`) は checkpoint を取って、渡された関数で先を読み、結果に関わらず必ず rewind します。投機パースとの違いは、成功しても巻き戻すかどうかだけです。先を覗いて、判断材料だけを持ち帰りたいときに使います。
+
+### re-lex
+
+3つ目は、トークンの切り方のやり直しです。レキサーは文脈を知らないので、`<<` を見ると1つの左シフト演算子にまとめてしまいます。型引数の中ではそれを山括弧2つとして扱いたいので、パーサーがレキサーに、ソース上の同じ場所を別の切り方で読み直させます。これが re-lex です。
+
+下準備で見た `>>` の2通りの姿も、向きは逆ですが同じ道具によるものです。
+
+以降のトレースには、checkpoint と rewind と re-lex が起きた場所に、角括弧で始まる印の行が入っています。
+
 ## 今回の題材
 
-前回はリポジトリの地図を広げて、TypeScript専用のパーサーというものは存在しないという話をしました。今回はまた細い道に戻ります。同じ形なのに結果が違う2行を、先頭から歩かせてみます。
+同じ形なのに結果が違う2行を、先頭から歩かせてみます。
 
 ```ts
 f<T>(x);
@@ -31,7 +156,7 @@ f<T>(x);
 a < b > c;
 ```
 
-字句解析を終えた時点の姿は、驚くほど似ています。実際に oxc から吐かせたトークン列がこちらです。
+トークン列にしてみると、驚くほど似ています。さっきのコマンドで oxc から吐かせたものがこちらです。
 
 ```
 // f<T>(x);
@@ -53,21 +178,67 @@ a < b > c;
   9..10  Semicolon        ";"
 ```
 
-識別子、開き山括弧、そこからもうひとつ名前、そして閉じるほう。ここまで完全に同じ並びです。違いは5番目に来るものが `(` か識別子かという一点だけ。
+なのに出てくる木は別物です。こちらも oxc のリポジトリの中で、AST をダンプするサンプルを使って確かめられます。
 
-なのに出てくる木は別物です。上は型引数つきの呼び出し (CallExpression の `typeArguments` に `T` がぶら下がる)、下は比較演算を2回やった二重の BinaryExpression、つまり `(a < b) > c` になります。第0回で1文だけ書いて放置した話の、種明かしにあたります。
+```bash
+echo 'f<T>(x);' > /tmp/call.ts
+cargo run -q -p oxc_parser --example parser -- /tmp/call.ts --estree
+```
+
+出力から、`Program` と `ExpressionStatement` の外枠、それと `decorators` のような中身が空のフィールドを省いたものがこちらです。
+
+```json
+{
+  "type": "CallExpression",
+  "callee": { "type": "Identifier", "name": "f", "start": 0, "end": 1 },
+  "typeArguments": {
+    "type": "TSTypeParameterInstantiation",
+    "params": [
+      {
+        "type": "TSTypeReference",
+        "typeName": { "type": "Identifier", "name": "T", "start": 2, "end": 3 },
+        "typeArguments": null,
+        "start": 2,
+        "end": 3
+      }
+    ],
+    "start": 1,
+    "end": 4
+  },
+  "arguments": [{ "type": "Identifier", "name": "x", "start": 5, "end": 6 }],
+  "optional": false,
+  "start": 0,
+  "end": 7
+}
+```
+
+同じようにして `a < b > c;` を流すと、こうなります。
+
+```json
+{
+  "type": "BinaryExpression",
+  "left": {
+    "type": "BinaryExpression",
+    "left": { "type": "Identifier", "name": "a", "start": 0, "end": 1 },
+    "operator": "<",
+    "right": { "type": "Identifier", "name": "b", "start": 4, "end": 5 },
+    "start": 0,
+    "end": 5
+  },
+  "operator": ">",
+  "right": { "type": "Identifier", "name": "c", "start": 8, "end": 9 },
+  "start": 0,
+  "end": 9
+}
+```
+
+山括弧の内側にいる `T` と `b` の扱いを見比べると違いがはっきりします。`T` は `TSTypeReference` に包まれて型として、`b` は素の `Identifier` として式として、それぞれ木に入っています。
 
 面白いのは、この2つが分岐点まで完全に同じ道を通ることです。同じ関数を同じ順に呼び、同じ場所で checkpoint を取り、同じ型パーサーを走らせ、最後の1回の判定だけで運命が分かれます。以下、その道を先頭から歩きます。
 
-## トレースは実際に走らせて採った
+## 文の入口から、型パーサーが呼ばれるまで
 
-以降で引用する呼び出し順は、想像ではなく実測です。oxc の `crates/oxc_parser/src` にある `parse_*` や `is_start_of*` といった関数297個の入口に一時的に出力を仕込み、採取してから revert しました。あわせて `cursor.rs` の checkpoint と rewind、そして re-lex の発火も記録しています。
-
-読んだ oxc は rev `1aa5ec11ce` です。行番号はすべてこのリビジョン基準で、関数名とセットで書きます。
-
-## 先頭12行で、4つのファイルをまたぐ
-
-これが `f<T>(x);` のトレースの冒頭です。字下げは呼び出しの深さ、角括弧の中はその関数に入った時点の現在トークンとソース上の位置を表します。
+これが `f<T>(x);` のトレースの冒頭です。パーサーの `parse_*` などの関数の入口に一時的に出力を仕込んで採りました。字下げは呼び出しの深さ、角括弧の中はその関数に入った時点の現在トークンとソース上の位置を表します。
 
 ```
 parse_directives_and_statements  [Ident @0]
@@ -85,31 +256,57 @@ parse_directives_and_statements  [Ident @0]
               parse_type_arguments_in_expression  [LAngle @1]
 ```
 
-12行しかないのに、住所は4つのファイルにまたがります。
+13行しかないのに、呼ばれている関数は4つのファイルにまたがります。
 
-| 行  | 関数                                                     | 置き場所                     |
-| --- | -------------------------------------------------------- | ---------------------------- |
-| 1   | parse_directives_and_statements                          | js/statement.rs:33           |
-| 3   | parse_statement_list_item                                | js/statement.rs:131          |
-| 4   | parse_expression_or_labeled_statement                    | js/statement.rs:251          |
-| 5   | parse_assignment_expression_or_higher                    | js/expression.rs:1479        |
-| 6-8 | アロー関数を試す2つ                                      | js/arrow.rs                  |
-| 9   | parse_binary_expression_or_higher                        | js/expression.rs:1304        |
-| 10  | parse_lhs_expression_or_higher                           | js/expression.rs:748         |
-| 11  | parse_primary_expression と parse_member_expression_rest | js/expression.rs:228 と :859 |
-| 12  | parse_type_arguments_in_expression                       | ts/types.rs:914              |
+| 行  | 関数                                  | 置き場所              |
+| --- | ------------------------------------- | --------------------- |
+| 1   | parse_directives_and_statements       | js/statement.rs:33    |
+| 3   | parse_statement_list_item             | js/statement.rs:131   |
+| 4   | parse_expression_or_labeled_statement | js/statement.rs:251   |
+| 5   | parse_assignment_expression_or_higher | js/expression.rs:1479 |
+| 6-8 | アロー関数を試す2つ                   | js/arrow.rs           |
+| 9   | parse_binary_expression_or_higher     | js/expression.rs:1304 |
+| 10  | parse_lhs_expression_or_higher        | js/expression.rs:748  |
+| 11  | parse_primary_expression              | js/expression.rs:228  |
+| 12  | parse_member_expression_rest          | js/expression.rs:859  |
+| 13  | parse_type_arguments_in_expression    | ts/types.rs:914       |
 
-最初の11行は全部 `js/` の下です。TypeScript 固有の処理に入るのは12行目、`ts/types.rs` を呼んだところが最初になります。型注釈もジェネリクスの宣言も無い1行ですが、`<` が1つあるだけで型のパーサーが起動します。
+最初の12行は全部 `js/` の下です。TypeScript 固有の処理に入るのは13行目、`ts/types.rs` を呼んだところが最初になります。型注釈もジェネリクスの宣言も無い1行ですが、`<` が1つあるだけで型のパーサーが起動します。
 
-ちなみにトレースの一番上に `parse_program` (`lib.rs:817`) が出ていないのは、仕込みを `js/` と `ts/` と `jsx/` にしか入れなかったからです。実際の入口はそこで、最初のトークンを読んでハッシュバンを確認したあと、本体の文の列へ降りていきます。
+1行目に出ている `[checkpoint] at 0` は今回の主役ではありません。これは unambiguous モードのときに文ごとに取る定型の取り置きで、トップレベルの `await` を識別子として読んでしまった場合に読み直せるようにするためのものです。山括弧の曖昧性とは無関係なので、以降は無視します。
 
-1行目に出ている `[checkpoint] at 0` も今回の主役ではありません。これは unambiguous モードのときに文ごとに取る定型の取り置きで、トップレベルの `await` を識別子として読んでしまった場合に読み直せるようにするためのものです。山括弧の曖昧性とは無関係なので、以降は無視します。
+6行目から8行目のアロー関数の試行も、今回は空振りです。7行目の `is_parenthesized_arrow_function_expression` (`js/arrow.rs:58`) はこうなっています。
 
-6行目から8行目のアロー関数の試行も、今回は空振りです。`is_parenthesized_arrow_function_expression` (`js/arrow.rs:58`) は現在トークンで振り分ける `match` になっていて、`(` と `<` と `async` 以外は最後の腕で即座に偽を返します。先頭が識別子の `f` なので、checkpoint すら取らずに帰ってきます。トレースにその記録が出ていないのが証拠です。
+```rust
+fn is_parenthesized_arrow_function_expression(&mut self) -> Tristate {
+    match self.cur_kind() {
+        Kind::LParen => {
+            // `(1 + a)` can never be arrow parameters: the leading literal is not the start of
+            // a `BindingElement`, so the worker would bump past it and return `Tristate::False`
+            // (`!second.is_binding_identifier() && second != This`). Skip the lookahead.
+            if self.lexer.peek_token().kind().is_literal() {
+                Tristate::False
+            } else {
+                self.lookahead(Self::is_parenthesized_arrow_function_expression_worker)
+            }
+        }
+        Kind::LAngle | Kind::Async => {
+            self.lookahead(Self::is_parenthesized_arrow_function_expression_worker)
+        }
+        _ => Tristate::False,
+    }
+}
+```
+
+返り値の `Tristate` は真と偽に「まだわからない」(`Maybe`) を足した3値です。先頭が `(` か `<` か `async` のときだけ `lookahead` で先を覗き、それ以外は最後の腕で即座に `Tristate::False` を返します。
+
+今回の先頭は識別子の `f` なので、最後の腕に落ちます。`lookahead` は内部で checkpoint を取るので、先を覗いていればトレースに `[checkpoint]` が出るはずです。6行目から8行目の間にそれが無いのが、覗かずに帰ってきた証拠です。
+
+8行目の `try_parse_async_simple_arrow_function_expression` も同じで、入口の `if self.at(Kind::Async) && ...` で先頭が `async` でないと分かった時点で `None` を返します。
 
 ## 境界は、後置を読むループの中の腕
 
-JS 側と TS 側の継ぎ目は、11行目の `parse_member_expression_rest` (`js/expression.rs:859`) です。読み終えた左辺のうしろに続くものを、`loop` で1段ずつ積んでいく関数になっています。
+JS 側と TS 側の継ぎ目は、12行目の `parse_member_expression_rest` (`js/expression.rs:859`) です。読み終えた左辺のうしろに続くものを、`loop` で1段ずつ積んでいく関数になっています。
 
 ```rust
 let mut lhs = lhs;
@@ -126,7 +323,7 @@ loop {
 }
 ```
 
-順番はこうです。`a.b[0]!` を読ませると、まず `a` の外側に `a.b` ができ、そのうえに `a.b[0]` が乗り、最後に非 null 表明が全体をくるみます。左から右へ積み上げていく形です。第0回に「TypeScript が JavaScript の式パーサーへ食い込んでいる」と書きましたが、その一番わかりやすい形がこれだと思います。もとからある後置 (ドット、角括弧、オプショナルチェーン、タグ付きテンプレート) と、TypeScript でしか使えない後置 (`!` と山括弧) が、ひとつの `match` に並んでいます。
+順番はこうです。`a.b[0]!` を読ませると、ループを1周するごとに左辺が1段外側へ包まれて、`((a.b)[0])!` の形になります。TypeScript が JavaScript の式パーサーへ食い込んでいる、と言うときの一番わかりやすい形がこれだと思います。もとからある後置 (ドット、角括弧、オプショナルチェーン、タグ付きテンプレート) と、TypeScript でしか使えない後置 (`!` と山括弧) が、ひとつの `match` に並んでいます。
 
 拡張子が `.ts` ではなく `.js` のときは `self.is_ts` が偽になるので、山括弧の腕には入りません。そのまま `_ => return lhs` に落ちて、山括弧は上位の二項演算のはしごが比較として処理します。ひとつのパーサーで両方を賄う仕掛けが、ガード1つで実現されているわけです。
 
@@ -136,20 +333,31 @@ loop {
 Kind::LAngle | Kind::ShiftLeft if self.is_ts => {
     if let Some(arguments) = self.parse_type_arguments_in_expression() {
         lhs = Expression::new_ts_instantiation_expression(
-            self.end_span(lhs_start), lhs, arguments, self,
+            self.end_span(lhs_start),
+            lhs,
+            arguments,
+            self,
         );
     } else {
+        // `re_lex_as_typescript_l_angle` may have overwritten the original `<<`
+        // in the collected token stream with the single `<` it re-lexed.
+        // Rewind restored the parser's current token, so write it back over that `<`.
+        // This is a no-op when tokens are statically disabled (`NoTokensLexerConfig`).
         self.lexer.rewrite_last_collected_token(self.token);
         return lhs;
     }
 }
 ```
 
-うまくいけば `TSInstantiationExpression` で包み、だめなら左辺をそのまま返します。失敗したときに山括弧は消費されないままなので、呼び出し元が比較演算子として読み直せます。`else` の側にある `rewrite_last_collected_token` は後で出てきます。
+型引数として読めたら、左辺を `TSInstantiationExpression` で包みます。これは `const g = f<string>;` のように、関数を呼ばずに型引数だけを当てた式を表すノードです。
+
+でも、`f<T>(x)` は呼び出しなのに、なぜこのノードなのか。この腕は、山括弧のあとに `(` が続くかどうかを区別していません。`f<T>;` のように型引数だけで終わる式もありうるので、どちらの場合もひとまずこの形で包みます。`(` が続いたときは、呼び出しを読む別の関数がこの包みを開け直します。その様子は最後の節で見ます。
+
+型引数として読めなかったら、左辺をそのまま返します。失敗したときに山括弧は消費されないままなので、呼び出し元が比較演算子として読み直せます。`else` の側にある `rewrite_last_collected_token` は、`<<` を割ったまま失敗したときに元のトークンへ書き戻す後始末で、今回の入力には関係しません。
 
 ## 投機の中身
 
-いよいよ `parse_type_arguments_in_expression` (`ts/types.rs:914`) です。ここだけで、トレースに残っているイベント行が全部説明できます。実物の出力では角括弧で始まる行に印が付いていて、これが checkpoint と rewind と再字句解析の発火を表します。
+いよいよ `parse_type_arguments_in_expression` (`ts/types.rs:914`) です。ここだけで、トレースに残っている印の行が全部説明できます。
 
 ```
 parse_type_arguments_in_expression  [LAngle @1]
@@ -165,56 +373,204 @@ parse_type_arguments_in_expression  [LAngle @1]
   can_follow_type_arguments_in_expr  [LParen @4]
 ```
 
-関数は大きく5段です。順に見ていきます。
+関数は大きく6段です。順に見ていきます。
 
 ### 入る前に帰る道がある
 
-最初にあるのは、現在トークンが `<` でも `<<` でもなければ即座に `None` を返す門番です。checkpoint を取るより手前に置かれているのがポイントで、ソースのコメントにも `a?.(` や `a?.b` のような普通の経路で、取っては巻き戻すという往復を払わずに済ませるため、と書いてあります。
+最初にあるのは、現在トークンが `<` でも `<<` でもなければ即座に `None` を返す門番です。関数の冒頭はこうなっています。
+
+```rust
+/// Speculatively parse a `<T, U>` type-argument list in an expression
+/// position (e.g. `foo<T>(arg)` vs `foo < T`). Returns `None` and rewinds
+/// any parser/lexer state when the upcoming tokens turn out not to be a
+/// valid type-argument list.
+pub(crate) fn parse_type_arguments_in_expression(
+    &mut self,
+) -> Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>> {
+    // A type-argument list can only open with `<`, or `<<` for nested generics like
+    // `f<<T>() => U>()`. This mirrors TypeScript's `reScanLessThanToken`, which re-scans only
+    // `<`/`<<`. `<=`/`<<=` can never open one — splitting off the leading `<` leaves a `=`, and
+    // no type starts with `=` — so although `re_lex_ts_l_angle` would accept them (it is shared
+    // with type-context callers), speculating here can only fail and rewind to `None`. Bail
+    // before the checkpoint for any non-`<`-opening token (the common `a?.(`, `a?.b` paths),
+    // avoiding a checkpoint/rewind round-trip that returns `None` anyway.
+    if !matches!(self.cur_kind(), Kind::LAngle | Kind::ShiftLeft) {
+        return None;
+    }
+    let checkpoint = self.checkpoint();
+```
+
+門番の `if` が `self.checkpoint()` より手前に置かれているのがポイントです。コメントにも、`a?.(` や `a?.b` のような普通の経路で、checkpoint を取っては巻き戻すという往復を払わずに済ませるため、と書いてあります。
 
 トレースで `[checkpoint]` が山括弧の位置でしか出ないのは、この門番のおかげです。パーサーは後置を読むたびにこの関数を通りますが、ほとんどの場合はここで帰ります。
 
-同じコメントには `<=` と `<<=` を弾く理由も書いてあります。先頭の1文字を割って型引数として読もうとすると、残りが `=` から始まる型になってしまう。ところが型の文法に `=` で始まる規則はないので、投機しても必ず失敗する。だから最初から試さない、という論法です。
+同じコメントには、`<=` と `<<=` を門番で弾く理由も書いてあります。
 
-### checkpoint が保存するもの
+> `<=`/`<<=` can never open one — splitting off the leading `<` leaves a `=`, and no type starts with `=` — so although `re_lex_ts_l_angle` would accept them (it is shared with type-context callers), speculating here can only fail and rewind to `None`.
 
-ここで `self.checkpoint()` (`cursor.rs:309`) を取ります。保存するのはレキサーの位置と、現在トークンと、直前トークンの終端と、エラーの件数と、致命的エラーの有無だけです。
+訳すと、`<=` と `<<=` が型引数リストの始まりになることはない。先頭の `<` を割り取ると `=` が残るが、`=` で始まる型は存在しないからだ。`re_lex_ts_l_angle` 自体はこの2つも受け付ける (型の文脈から呼ぶ側と共用しているため) が、ここで投機しても失敗して `None` に戻るだけだ。そういう内容です。
+
+門番の条件が `Kind::LAngle | Kind::ShiftLeft` の2つだけで、`<=` にあたる `LtEq` や `<<=` にあたる `ShiftLeftEq` を含めていないのは、このためです。
+
+こういう、投機の手前で明らかな外れを弾く近道は oxc のあちこちにあります。先ほどのアロー関数の判定で見た、`(` の次がリテラルなら先読みを飛ばす分岐もそのひとつです。
+
+#### 余談: 同じ門番が Go 版の tsc にもあった
+
+この門番は oxc が tsc の移植の上に足した近道だと思っていたら、Go 版の tsc (typescript-go) にもまったく同じものがありました。
+
+```go
+func (p *Parser) tryParseTypeArgumentsInExpression() *ast.NodeList {
+	// TypeArguments must not be parsed in JavaScript files to avoid ambiguity with binary operators.
+	// Check the cheap preconditions before saving the parser state: unless the current token is `<`
+	// (or `<<`, which reScanLessThanToken would split), there is nothing to speculatively parse and
+	// the mark/rewind would be a no-op.
+	if p.contextFlags&ast.NodeFlagsJavaScriptFile != 0 || (p.token != ast.KindLessThanToken && p.token != ast.KindLessThanLessThanToken) {
+		return nil
+	}
+	state := p.mark()
+```
+
+ここの `p.mark()` が oxc の checkpoint にあたります。その手前で `<` と `<<` 以外を弾いている点まで同じです。
+
+一方、元の JS 版 tsc (6.0.3) には門番がありません。呼び出し元が `tryParse(parseTypeArgumentsInExpression)` の形で包んでいて、`tryParse` が状態を保存してから関数を呼ぶので、`<` が来なくても毎回、保存と巻き戻しが走ります。
+
+調べると、ts-go も oxc も、2026年6月の PR でこの門番を足していました。
+
+|        | typescript-go                                                 | oxc                                                     |
+| ------ | ------------------------------------------------------------- | ------------------------------------------------------- |
+| PR     | [#4234](https://github.com/microsoft/typescript-go/pull/4234) | [#23069](https://github.com/oxc-project/oxc/pull/23069) |
+| 作成   | 2026-06-06                                                    | 2026-06-07                                              |
+| マージ | 2026-06-22                                                    | 2026-06-08                                              |
+| 効果   | `checker.ts` のパースが13.74%速くなった                       | 数字の記載なし。テストのスナップショットは変化なし      |
+
+ts-go 側の説明によると、この関数はメンバーアクセスの `.` や呼び出しのたびに呼ばれていて、そのたびにパーサーとスキャナーの状態を丸ごと保存しては巻き戻していました。oxc 側も `a?.(` や `a?.b` が同じ往復を払っていた、と同じ理由を挙げています。作成日は1日も違いませんが、どちらも相手には触れていないので、同じ時期に同じ無駄に気づいた、ということのようです。
+
+ts-go は tsc の忠実な移植として作られましたが、移植のあとは速さのための手が入り始めていて、この門番については JS 版 tsc だけが元の形のまま残っている、ということになります。ちなみに、アロー関数の判定の近道のほうは、今のところ ts-go には無く oxc だけのものでした。
+
+### checkpoint が巻き戻さないもの
+
+ここで `self.checkpoint()` を取ります。道具立てで見たとおり、保存するのは読み位置とエラーの件数くらいです。
 
 うれしいのは、すでに arena に確保した AST ノードを巻き戻さないことです。投機に失敗しても、その間に作った木は放置されるだけで、誰からも参照されなくなります。bump allocator なので個別に解放する手段がそもそも無く、必要もない。投機パースの失敗が安いのは、この割り切りのおかげです。
 
-ついでに整理しておくと、第0回で挙げた道具のうち先読みは、独立した機構ではありません。`lookahead` (`cursor.rs:340`) は checkpoint を取ってクロージャを走らせ、結果に関わらず無条件に rewind するだけの薄い皮です。投機パースとの違いは、成功しても巻き戻すかどうかだけ、ということになります。
-
 ### re-lex は今回の入力では空振りする
 
-続いて `re_lex_ts_l_angle` (`cursor.rs:277`) を呼びます。トレースの `[re_lex L] at 1` がこれです。
+checkpoint を取ったら、`re_lex_ts_l_angle` (`cursor.rs:277`) を呼びます。道具立てで説明した re-lex の、開き山括弧の版です。
 
-ここは注意して読む必要がありました。イベントは関数の入口に仕込んであるので、実際に字句解析をやり直したかどうかとは無関係に出ます。中身を見ると、現在トークンが `ShiftLeft` か `LtEq` のときは2文字ぶん、`ShiftLeftEq` では3文字ぶん戻してレキサーに読み直させますが、もともと単独の `<` だった場合は `kind == Kind::LAngle` を返すだけで何もしません。
+```rust
+pub(crate) fn re_lex_ts_l_angle(&mut self) -> bool {
+    if self.fatal_error.is_some() {
+        return false;
+    }
+    let kind = self.cur_kind();
+    if kind == Kind::ShiftLeft || kind == Kind::LtEq {
+        self.token = self.lexer.re_lex_as_typescript_l_angle(2);
+        true
+    } else if kind == Kind::ShiftLeftEq {
+        self.token = self.lexer.re_lex_as_typescript_l_angle(3);
+        true
+    } else {
+        kind == Kind::LAngle
+    }
+}
+```
 
-今回の入力はどちらも単独なので、ここは確認だけして素通りします。本当に割れるのは `f<<T>() => T>(x);` のような入れ子のときで、レキサーが最長一致で `<<` を作ってしまったのをパーサーが割り直させます。
+現在のトークンが `<<` (`ShiftLeft`)、`<=` (`LtEq`)、`<<=` (`ShiftLeftEq`) のどれかなら、先頭の `<` だけを1つのトークンに切り直し、残りの文字は次のトークンとして読ませます。もともと単独の `<` (`LAngle`) なら、切り直すものが無いので何もせずに `true` を返します。
 
-割り直しを担うのは `lexer/typescript.rs` で、ファイル全体が53行しかありません。しかも関数は2つだけで、行数の大半はコメントです。読むと、左と右で後始末が非対称な理由が書いてあります。
-
-| 向き | 状況                                                                        | 後始末                                                                                       |
-| ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 左   | 複合トークンは checkpoint より前に収集済みのトークン列へ push されている    | 収集列の末尾を単独の山括弧で上書きし、投機が失敗したら呼び出し元が元の複合トークンを書き戻す |
-| 右   | 閉じる側は最初から1文字ずつ切られていて、複合トークンは投機の最中に作られる | rewind の truncate が勝手に消すので、コードは不要                                            |
-
-さっきの `parse_member_expression_rest` の `else` にあった `rewrite_last_collected_token` が、表の上段でいう書き戻しです。checkpoint の境界より手前を書き換えた者が失敗時の後始末を負う、という取り決めが、レキサーとパーサーのコメントで相互参照されながら文書化されています。
-
-なお、閉じる側が1文字ずつなのは頻度の賭けだと思います。入れ子のジェネリクスを閉じる `>>` は日常的に書かれますが、`f<<T>` のような開き方は珍しい。よく出るほうを後から結合する設計にしておけば、巻き戻しのコードが1箇所減ります。
+今回の入力はどちらも `<` が単独なので、ここは何もせずに通り過ぎます。
 
 ### 型を読む
 
-門番を抜けたら、あとは素直に型引数のリストを読みます。`<` を食べて、カンマ区切りで `parse_ts_type` を呼ぶだけです。
+re-lex を通ったら、あとは素直に型引数のリストを読みます。`<` を食べて、カンマ区切りで `parse_ts_type` を呼ぶだけです。
 
 トレースではここから型パーサーのはしごが顔を出します。ユニオン、インターセクション、型演算子、後置、配列でない型、型参照、という順に降りていって、`T` を読んで戻ってきます。
 
 途中の `parse_type_arguments_of_type_reference` (`ts/types.rs:887`) で `[re_lex L] at 3` が出ているのは、`T` 自身がジェネリックかもしれないので山括弧が続くか確かめた跡です。実際の現在トークンは閉じる側なので、`re_lex_ts_l_angle` は偽を返して何もせずに帰ります。こちらも空振りでした。
 
-### 最後の一手は、次のトークンを見るだけ
+### 閉じの `>` が本物か確かめる
 
-型を読み終えたら閉じる側の処理です。まず `re_lex_right_angle` (`cursor.rs:264`) を呼んで `>=` になっていないか確かめます。なっていたら即 rewind します。コメントに `a < b> = c` は妥当だが `a < b >= c` は BinaryExpression だ、とあって、ここで分けています。
+型を読み終えたら閉じる側の処理です。該当部分はこうなっています。
 
-そのあと `re_lex_ts_r_angle` (`cursor.rs:293`) で `>>` や `>>>` から1つぶんを切り出し、閉じる山括弧を食べます。そして最後に来るのが、この関数の心臓部です。
+```rust
+let (params, _) =
+    self.parse_delimited_list(Kind::RAngle, Kind::Comma, opening_span, Self::parse_ts_type);
+// `a < b> = c` is valid but `a < b >= c` is BinaryExpression
+if matches!(self.re_lex_right_angle(), Kind::GtEq) {
+    self.rewind(checkpoint);
+    return None;
+}
+self.re_lex_ts_r_angle();
+self.expect(Kind::RAngle);
+```
+
+上から順に見ていきます。まず `if` の条件です。
+
+```rust
+if matches!(self.re_lex_right_angle(), Kind::GtEq) {
+```
+
+呼んでいる `re_lex_right_angle` (`cursor.rs:264`) はこうです。
+
+```rust
+pub(crate) fn re_lex_right_angle(&mut self) -> Kind {
+    if self.fatal_error.is_some() {
+        return Kind::Eof;
+    }
+    let kind = self.cur_kind();
+    if kind == Kind::RAngle {
+        self.token = self.lexer.re_lex_right_angle();
+        self.token.kind()
+    } else {
+        kind
+    }
+}
+```
+
+現在のトークンが `>` (`RAngle`) なら、レキサーに読み直させて、その結果の種類を返します。読み直すと何が起きるかは、レキサー側の `read_right_angle` (`lexer/punctuation.rs:96`) を見るとわかります。
+
+```rust
+fn read_right_angle(&mut self) -> Kind {
+    if self.next_ascii_byte_eq(b'>') {
+        if self.next_ascii_byte_eq(b'>') {
+            if self.next_ascii_byte_eq(b'=') { Kind::ShiftRight3Eq } else { Kind::ShiftRight3 }
+        } else if self.next_ascii_byte_eq(b'=') {
+            Kind::ShiftRightEq
+        } else {
+            Kind::ShiftRight
+        }
+    } else if self.next_ascii_byte_eq(b'=') {
+        Kind::GtEq
+    } else {
+        Kind::RAngle
+    }
+}
+```
+
+ここで読んでいるのは、トークンではなくソースの文字そのものです。トークンが持っているのは種類と位置だけなので、`next_ascii_byte_eq` は `>` の直後の1バイトをソースから直接見ています。見た文字に応じて、`>>`、`>>=`、`>>>`、`>>>=`、`>=` のどれかにまとめ直します。
+
+なぜわざわざ読み直すのかというと、レキサーは最初、`>` をいつも1文字で切っておくからです。そのため `a < b >= c` と `a < b> = c` は、最初のトークン列ではどちらも `a` `<` `b` `>` `=` `c` になり、見分けがつきません。違いは `>` と `=` がソース上でくっついているかどうかだけで、それを確かめるにはソースを読み直すしかない、というわけです。
+
+読み直した結果が `>=` (`GtEq`) なら、`if` の中に入ります。
+
+```rust
+    self.rewind(checkpoint);
+    return None;
+```
+
+つまり `<` から先を型引数として読むのをあきらめて、checkpoint まで巻き戻します。直前のコメントにある `a < b >= c` がこの場合で、`>=` は型引数の閉じではなく比較演算子だからです。コメントの前半の `a < b> = c` は、`>` の直後が空白なので読み直しても `>` のままで、型引数の閉じとして通ります (そのあと `a<b>` への代入になるので、代入先が不正というエラーにはなります)。
+
+結果が `>=` でなければ、残りの2行に進みます。
+
+```rust
+self.re_lex_ts_r_angle();
+self.expect(Kind::RAngle);
+```
+
+1行目の `re_lex_ts_r_angle` (`cursor.rs:293`) は、さっき読み直してできた `>>` や `>>>` から `>` を1つぶんだけ切り出し直します。`Array<Array<T>>` のように閉じが重なったときのためです。そのあと `expect` で閉じの `>` を食べます。今回の2行はどちらも `>` が単独なので、ここは何もせずに通り過ぎます。
+
+### 最後は、閉じたあとの1トークンで決まる
+
+閉じの `>` まで食べたら、最後に来るのがこの関数の心臓部です。
 
 ```rust
 if self.fatal_error.is_some() || !self.can_follow_type_arguments_in_expr() {
@@ -226,7 +582,6 @@ if self.fatal_error.is_some() || !self.can_follow_type_arguments_in_expr() {
 呼ばれている `can_follow_type_arguments_in_expr` (`ts/types.rs:955`) は、閉じたあとの1トークンを見るだけの判定です。
 
 ```rust
-// ts/types.rs:955 can_follow_type_arguments_in_expr
 fn can_follow_type_arguments_in_expr(&mut self) -> bool {
     match self.cur_kind() {
         Kind::LParen | Kind::NoSubstitutionTemplate | Kind::TemplateHead => true,
@@ -240,13 +595,13 @@ fn can_follow_type_arguments_in_expr(&mut self) -> bool {
 }
 ```
 
-`_` の腕を裏返すと、直後に式が始まってしまうときだけ却下する、と読めます。`;` や `)` や `,` は式を開始しないので採用されます。つまり `f<T>;` は、丸括弧が続かなくても `TSInstantiationExpression` として通ります。
+最後の `_` の腕を裏返すと、直後に式が始まってしまうときだけ却下する、と読めます。`;` や `)` や `,` は式を開始しないので採用されます。つまり `f<T>;` は、丸括弧が続かなくても `TSInstantiationExpression` として通ります。
 
-今回の `f<T>(x);` は1行目に当たります。閉じたあとが `(` なので、その場で確定です。トレースの `can_follow_type_arguments_in_expr [LParen @4]` の直後に rewind が無いのは、そういうことです。
+今回の `f<T>(x);` は、閉じたあとが `(` なので `match` の最初の腕 (`Kind::LParen | ... => true`) に当たり、その場で確定です。トレースの `can_follow_type_arguments_in_expr [LParen @4]` の直後に rewind が無いのは、そういうことです。
 
 ## 巻き戻る側
 
-ではもう1本の入力です。同じ関数の入口まで、トレースはさっきと完全に一致します。checkpoint を取り、左の確認をし、型のはしごを降りて `b` を型として読み、右の確認をして、判定に到達します。
+ここまでは `f<T>(x);` を追ってきました。次は比較演算になる側の `a < b > c;` です。`parse_type_arguments_in_expression` の入口まで、トレースは `f<T>(x);` のときと完全に一致します。checkpoint を取り、開きの `<` の re-lex を通り、型のはしごを降りて `b` を型として読み、閉じの `>` を確かめて、判定に到達します。
 
 ```
               parse_type_arguments_in_expression  [LAngle @2]
@@ -261,13 +616,79 @@ fn can_follow_type_arguments_in_expr(&mut self) -> bool {
                 [rewind] from 8 back to 2
 ```
 
-判定に入った時点の現在トークンが、さっきは `(` で、今度は識別子の `c` です。さっきの表でいう3行目に落ち、`is_start_of_expression` (`ts/types.rs:1657`) を呼びます。この関数は最後の腕で `kind.is_ts_identifier(...)` を見るので、識別子に対して真を返します。式が始まってしまうので却下、というわけです。
+判定に入った時点の現在トークンが、さっきは `(` で、今度は識別子の `c` です。識別子は最初の2つの腕のどちらにも当たらないので、最後の `_` の腕に落ちます。改行も二項演算子も無いので、残る `!self.is_start_of_expression()` で `is_start_of_expression` (`ts/types.rs:1657`) を呼びます。
 
-意外だったのは、投機の最中に `c` が一度もパースされないことです。読んだのは `b` までで、`c` は判定のためにチラ見されただけ。山括弧の中身のパース自体は成功しています。`b` という名前の型があるかもしれないので、それは当然なのですが、失敗の原因が中身ではなく直後の1トークンにあるというのは、言われるまで気づきませんでした。
+```rust
+fn is_start_of_expression(&mut self) -> bool {
+    if self.is_start_of_left_hand_side_expression() {
+        return true;
+    }
+    match self.cur_kind() {
+        kind if kind.is_unary_operator() => true,
+        kind if kind.is_update_operator() => true,
+        Kind::LAngle | Kind::Await | Kind::Yield | Kind::Private | Kind::At => true,
+        kind if kind.is_binary_operator() => true,
+        kind => kind.is_ts_identifier(self.ctx.has_yield(), self.ctx.has_await()),
+    }
+}
+```
 
-そして `[rewind] from 8 back to 2` です。位置8まで進んだ状態から、山括弧のところまで戻ります。ここで捨てられるのは、型として読んだ `b` の木と、読み進めたカーソルです。木のほうは arena に置き去りにされます。
+最初に `is_start_of_left_hand_side_expression` (`ts/types.rs:1670`) を呼びます。トレースで `is_start_of_expression` の下に出ていた行です。
 
-帰ってきた `parse_member_expression_rest` は左辺の `a` をそのまま返し、二項演算のはしご `parse_binary_expression_rest` (`js/expression.rs:1322`) が山括弧を比較演算子として読み直します。
+```rust
+fn is_start_of_left_hand_side_expression(&mut self) -> bool {
+    match self.cur_kind() {
+        kind if kind.is_literal() => true,
+        kind if kind.is_template_start_of_tagged_template() => true,
+        Kind::This
+        | Kind::Super
+        | Kind::LParen
+        | Kind::LBrack
+        | Kind::LCurly
+        | Kind::Function
+        | Kind::Class
+        | Kind::New
+        | Kind::Slash
+        | Kind::SlashEq => true,
+        Kind::Import => {
+            matches!(self.lexer.peek_token().kind(), Kind::LParen | Kind::LAngle | Kind::Dot)
+        }
+        _ => false,
+    }
+}
+```
+
+こちらはリテラルや `this`、括弧などで始まるかを見る関数で、識別子の腕はありません。`c` は最後の `_ => false` に落ちます。
+
+呼び出し元の `is_start_of_expression` に戻って `match` に進むと、`c` は単項演算子でも更新演算子でも二項演算子でもないので、最後の腕 `kind => kind.is_ts_identifier(...)` に落ちます。`c` は識別子なので、ここで真が返ります。
+
+つまり「閉じたあとに式が始まってしまう」ので、`can_follow_type_arguments_in_expr` は偽を返し、型引数としての読みは却下されます。
+
+却下されると、心臓部の `if` の中に入ります。
+
+```rust
+if self.fatal_error.is_some() || !self.can_follow_type_arguments_in_expr() {
+    self.rewind(checkpoint);
+    return None;
+}
+```
+
+トレースの `[rewind] from 8 back to 2` がこの `rewind` で、`c` まで進んでいた読み位置を `<` まで戻します。
+
+この関数から `None` が返ると、呼び出し元の `parse_member_expression_rest` の山括弧の腕では、`else` の側に入ります。
+
+```rust
+} else {
+    // `re_lex_as_typescript_l_angle` may have overwritten the original `<<`
+    // in the collected token stream with the single `<` it re-lexed.
+    // Rewind restored the parser's current token, so write it back over that `<`.
+    // This is a no-op when tokens are statically disabled (`NoTokensLexerConfig`).
+    self.lexer.rewrite_last_collected_token(self.token);
+    return lhs;
+}
+```
+
+左辺の `a` をそのまま返して、後置を読むループを抜けます。`<` は食べられずに残っているので、`a` を持って戻った先の二項演算のはしご `parse_binary_expression_rest` (`js/expression.rs:1322`) が、今度は `<` を比較演算子として読みます。トレースの続きでも、現在トークンが位置2の `<` から始まっています。
 
 ```
           parse_binary_expression_rest  [LAngle @2]
@@ -287,19 +708,34 @@ fn can_follow_type_arguments_in_expr(&mut self) -> bool {
 
 投機が成功したとき、`parse_member_expression_rest` が作るのは `TSInstantiationExpression` です。ところが最終的な木にそのノードは出てきません。ダンプを見ると、CallExpression の `typeArguments` に型引数が直接ぶら下がっています。
 
-種明かしは `parse_call_expression_rest` (`js/expression.rs:1091`) にありました。丸括弧を見つけたときに、左辺が `TSInstantiationExpression` なら中身を取り出して型引数を自分のほうへ付け替えています。包んだそばから開けているわけです。
+種明かしは `parse_call_expression_rest` (`js/expression.rs:1091`) にありました。丸括弧を見つけたときの処理がこうです。
 
-包む側と開ける側が別の関数なのは、`f<T>` のあとに丸括弧が来るとは限らないからでしょう。来なければ包んだままが正解で、来たときだけ呼び出しの一部として畳み直す。関数を分けておけば、後置を積むループはそのことを知らなくて済みます。
+```rust
+if type_arguments.is_some() || self.at(Kind::LParen) {
+    if !question_dot && let Expression::TSInstantiationExpression(expr) = lhs {
+        let expr = expr.unbox();
+        type_arguments.replace(expr.type_arguments);
+        lhs = expr.expression;
+    }
+
+    lhs =
+        self.parse_call_arguments(lhs_start, lhs, question_dot, type_arguments.take());
+    continue;
+}
+```
+
+条件の `self.at(Kind::LParen)` で丸括弧を見つけると、左辺が `TSInstantiationExpression` かどうかを `if let` で調べます。そうなら `unbox()` で包みを開け、中の型引数 (`expr.type_arguments`) を `type_arguments` に、中の式 (`expr.expression`、今回は `f`) を `lhs` に取り出します。そのうえで `parse_call_arguments` に両方を渡して呼び出しを組み立てるので、型引数は CallExpression の `typeArguments` に付きます。包んだそばから開けているわけです。
+
+包む側と開ける側を別の関数に分けておけば、後置を積むループは、あとに丸括弧が来るかどうかを知らなくて済みます。
 
 ## まとめ
 
-1行の入力を追うだけで、ずいぶん多くのものが出てきました。
+2行の入力を追うだけで、ずいぶん多くのものが出てきました。
 
 - TypeScript の処理に入る入口は、式のはしごの一番下にある後置のループでした。JavaScript の後置と同じ `match` に、TypeScript 固有の腕が2本並んでいます
 - 投機パースの単位は思ったより大きく、型引数のリスト全体を読み切ってから成否を決めます。判定材料は閉じたあとの1トークンだけです
 - 巻き戻しが安いのは arena のおかげで、失敗した木は解放されずに放置されます
-- 字句解析のやり直しは、今回の2つの入力ではどちらも空振りでした。トレースに名前が出ていても仕事をしているとは限らない、というのは自分が引っかかったところです
 
-そして、見た目の似た2行が最後の1判定で分かれるという構図そのものが、この言語の設計を物語っている気がします。山括弧を型引数に使うと決めた時点で、比較演算との衝突は避けられませんでした。Rust がターボフィッシュ (`::<>`) という独特の記法を採っているのは、まさにこの衝突を起こさないためです。似せる道を選んだ代償が、ここまで見てきた仕掛けの全部、ということになります。
+そして、見た目の似た2行が最後の1判定で分かれるという構図そのものが、この言語の設計を物語っている気がします。山括弧を型引数に使うと決めた時点で、比較演算との衝突は避けられませんでした。
 
 次回は、このパーサーが吐く AST の形が誰の仕様に合わせて作られているのかを見ます。同じ `null` 型でも、木の形が本家とoxcで違う理由を追います。
