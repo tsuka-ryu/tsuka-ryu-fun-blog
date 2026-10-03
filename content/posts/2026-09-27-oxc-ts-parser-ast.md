@@ -20,7 +20,116 @@ crates/oxc_parser/src/ts/types.rs        1,690行   null型を読む腕
 crates/oxc_parser/src/js/expression.rs   1,799行   後置の ! とチェーンの組み立て
 ```
 
-比較のために、TypeScript 本体 (tsc 3.9.10 / 4.0.8 / 5.7.3 / 5.9.3 / 6.0.3 と、Go 版の開発版) と `@typescript-eslint/typescript-estree` 8.26.1 も実際に走らせています。AST のダンプは、oxc は `cargo run -q -p oxc_parser --example parser -- x.ts --estree`、tsc は `ts.createSourceFile`、typescript-estree は `parse()` で採りました。
+比較のために、`@typescript-eslint/typescript-estree` 8.26.1 も走らせています。oxc とこちらの結果は、次の「下準備」の手順で手元でも同じものが出せます。TypeScript 本体 (tsc 3.9.10 / 4.0.8 / 5.7.3 / 5.9.3 / 6.0.3 と、Go 版の開発版) の結果は、Claude に確認してもらったものです。AST のダンプは、oxc は `cargo run -q -p oxc_parser --example parser -- x.ts --estree`、tsc は `ts.createSourceFile`、typescript-estree は `parse()` で採りました。
+
+## 下準備: oxc と typescript-estree の AST を手元で出す
+
+この記事に出てくる oxc と typescript-estree の木は、次の手順で手元でも同じものが出せます。Node.js と Rust のツールチェーンが入っていれば動きます。
+
+まず oxc を記事と同じリビジョンで取ってきます。履歴まで丸ごと clone すると時間がかかるので、このコミットだけを `--depth 1` で浅く取ります (コミットを指定して取るので、SHA は省略せずに書きます)。そのうえで、隣に作業用のディレクトリを作り、typescript-estree の 8.26.1 を入れます。これが使う `typescript` は peer dependency として npm が自動で入れます (手元では 5.8.3 が入りました)。
+
+```bash
+git init oxc
+git -C oxc fetch --depth 1 https://github.com/oxc-project/oxc.git 1aa5ec11ce0dcbb0da7799e777c2492211908fbb
+git -C oxc checkout FETCH_HEAD
+mkdir repro && cd repro
+npm init -y
+npm install @typescript-eslint/typescript-estree@8.26.1
+```
+
+作業用の `repro` の中に、次の3つのファイルを置きます。1つ目は、ESTree 形式の式を、この記事で使う略記 (`Chain(NonNull(Member?(a, b)))` のような形) に直す関数です。
+
+```js
+// shape.cjs
+// ESTree 形式の式を、記事の略記 (Chain / NonNull / Member? など) に直す
+function shape(n) {
+  switch (n.type) {
+    case "ChainExpression":
+      return `Chain(${shape(n.expression)})`;
+    case "TSNonNullExpression":
+      return `NonNull(${shape(n.expression)})`;
+    case "ParenthesizedExpression":
+      return `Paren(${shape(n.expression)})`;
+    case "MemberExpression": {
+      const prop = n.computed ? `[${n.property.raw}]` : n.property.name;
+      return `Member${n.optional ? "?" : ""}(${shape(n.object)}, ${prop})`;
+    }
+    case "CallExpression":
+      return `Call${n.optional ? "?" : ""}(${shape(n.callee)})`;
+    case "Identifier":
+      return n.name;
+    default:
+      return n.type;
+  }
+}
+module.exports = { shape };
+```
+
+2つ目は、typescript-estree で型と式をパースして、型注釈の種類と式の形を出すスクリプトです。
+
+```js
+// estree.cjs
+const { parse } = require("@typescript-eslint/typescript-estree");
+const { shape } = require("./shape.cjs");
+
+const types = ["type A = null;", "type C = true;", "type F = `abc`;"];
+for (const src of types) {
+  const t = parse(src).body[0].typeAnnotation;
+  console.log(src.padEnd(18), t.type, t.literal ? `> ${t.literal.type}` : "");
+}
+
+const exprs = [
+  "a!",
+  "a?.b!",
+  "a?.b!.c",
+  "a?.b.c!",
+  "a!.b?.c",
+  "a?.[0]!",
+  "a?.()!",
+  "a?.b!(x)",
+  "(a?.b)!.c",
+];
+for (const src of exprs) {
+  console.log(src.padEnd(12), shape(parse(src).body[0].expression));
+}
+```
+
+3つ目は、oxc の `parser` サンプルの出力から JSON を取り出して、同じ形で出すスクリプトです。
+
+```js
+// oxc.cjs
+// oxc の parser example の出力 (標準入力) から JSON を取り出し、式の形を略記で出す
+const { shape } = require("./shape.cjs");
+const out = require("fs").readFileSync(0, "utf8");
+const ast = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
+const stmt = ast.body[0];
+if (stmt.typeAnnotation) {
+  const t = stmt.typeAnnotation;
+  console.log(t.type, t.literal ? `> ${t.literal.type}` : "");
+} else {
+  console.log(shape(stmt.expression));
+}
+```
+
+typescript-estree 側は、そのまま実行します。
+
+```bash
+node estree.cjs
+```
+
+oxc 側は、入力を1つずつファイルに書いて `parser` サンプルに `--estree` を付けて流し、その出力を `oxc.cjs` に渡します。
+
+```bash
+cd ../oxc
+for src in 'type A = null;' 'type C = true;' 'type F = `abc`;' \
+           'a!' 'a?.b!' 'a?.b!.c' 'a?.b.c!' 'a!.b?.c' 'a?.[0]!' 'a?.()!' 'a?.b!(x)' '(a?.b)!.c'; do
+  printf '%s\n' "$src" > /tmp/x.ts
+  printf '%-18s ' "$src"
+  cargo run -q -p oxc_parser --example parser -- /tmp/x.ts --estree | node ../repro/oxc.cjs
+done
+```
+
+どちらも、本文に出てくる木と同じ形が出力されます。
 
 ## 今回の題材
 
@@ -134,7 +243,7 @@ Kind::Str | Kind::True | Kind::False => self.parse_literal_type(),
 
 ### 本家のほうは4.0で形が変わっていた
 
-では合わせなかった場合、つまり本家の形はどうなのか。手元にバージョン違いを並べて、`ts.createSourceFile` で AST をダンプしてみました。
+では合わせなかった場合、つまり本家の形はどうなのか。ここは Claude に、バージョン違いの tsc を並べて `ts.createSourceFile` で AST をダンプしてもらいました。
 
 ```
 type A = null;
@@ -159,11 +268,11 @@ case SyntaxKind.LiteralType: {
         // 4.0 started nesting null types inside a LiteralType node
         // but our AST is designed around the old way of null being a keyword
         return this.createNode(node.literal, {
-            type: AST_NODE_TYPES.TSNullKeyword,
+            type: ts_estree_1.AST_NODE_TYPES.TSNullKeyword,
         });
     }
     return this.createNode(node, {
-        type: AST_NODE_TYPES.TSLiteralType,
+        type: ts_estree_1.AST_NODE_TYPES.TSLiteralType,
         literal: this.convertChild(node.literal),
     });
 }
@@ -180,12 +289,12 @@ case SyntaxKind.LiteralType: {
 3. 変換レイヤーは既存の利用者のために、それを剥がして昔の形を保った
 4. oxc は、剥がした後の形を最初から作るようにした
 
-ついでに、Go 版の本家 (`tsc/internal/parser/parser.go`) も4.0以降の形を引き継いでいます。
+ついでに Claude に Go 版の本家 (`tsc/internal/parser/parser.go:2830`) も確認してもらうと、4.0以降の形を引き継いでいました。
 
 ```go
-case ast.KindNoSubstitutionTemplateLiteral, ast.KindStringLiteral, ast.KindNumericLiteral,
-     ast.KindBigIntLiteral, ast.KindTrueKeyword, ast.KindFalseKeyword, ast.KindNullKeyword:
-    return p.parseLiteralTypeNode(false /*negative*/)
+case ast.KindNoSubstitutionTemplateLiteral, ast.KindStringLiteral, ast.KindNumericLiteral, ast.KindBigIntLiteral, ast.KindTrueKeyword,
+	ast.KindFalseKeyword, ast.KindNullKeyword:
+	return p.parseLiteralTypeNode(false /*negative*/)
 ```
 
 null がリテラル型の仲間に並んでいます。移植のときも、ここは変えなかったわけです。
@@ -194,7 +303,7 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 
 さっきの話は、ノード1個の形をどう決めるかでした。もう少し木らしい例として、非 null アサーションの後置 `!` と `?.` の組み合わせを見ます。ここもパースの手順ではなく、出来上がった木の形だけの話です。
 
-11通りの入力を3者に食わせて、できた木の形を並べました。表にすると縦に長いので、木の略記で並べます。`Chain` は `ChainExpression`、`NonNull` は `TSNonNullExpression`、`Member?` と `Call?` は optional なメンバーアクセスと呼び出し、`[chain]` は本家のノードに `NodeFlags.OptionalChain` が立っていることを表します。
+11通りの入力を3者に食わせて、できた木の形を並べました。本家の列は、Claude に tsc 6.0.3 で確認してもらったものです。表にすると縦に長いので、木の略記で並べます。`Chain` は `ChainExpression`、`NonNull` は `TSNonNullExpression`、`Member?` と `Call?` は optional なメンバーアクセスと呼び出し、`[chain]` は本家のノードに `NodeFlags.OptionalChain` が立っていることを表します。
 
 ```
 a!
@@ -236,9 +345,9 @@ a?.b!(x)
 
 とはいえ、これは差というより設定の話でした。oxc のパーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。オンのあいだは括弧が `ParenthesizedExpression` というノードとして残る。ESTree の仕様に括弧のノードは無いので、切れば消えます。つまり実質は全一致です。
 
-ふたつめ。本家だけ、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。手元の 5.7.3 で `SyntaxKind` の中から Chain を含む名前を探すと0件で、代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
+ふたつめ。本家だけ、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。Claude に 5.7.3 の `SyntaxKind` から Chain を含む名前を探してもらうと0件で、代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
 
-面白いのは `!` の位置でフラグの付き方が変わるところです。`a?.b!.c` をダンプするとこうなりました。
+面白いのは `!` の位置でフラグの付き方が変わるところです。`a?.b!.c` を Claude に tsc 6.0.3 でダンプしてもらうと、こうなりました。
 
 ```
 PropertyAccessExpression [chain]
