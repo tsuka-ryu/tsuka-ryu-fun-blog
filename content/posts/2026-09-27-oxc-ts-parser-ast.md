@@ -1,12 +1,12 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第4回 そのASTは誰に合わせているのか
-description: oxcが吐くASTの形は誰の仕様に合わせているのか。tsc / TSESTree / oxc の3者の関係を、null型と後置の!の木の形で見ます。
+description: oxcが吐くASTの形は誰の仕様に合わせているのか。TypeScript AST / TSESTree / oxc の3者の関係を、null型と後置の!の木の形で見ます。
 date: 2026-09-27
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 draft: true
 ---
 
-この記事では、oxc が吐く AST の形が誰の仕様に合わせて作られているのかを、`null` 型と後置の `!` の木の形を、tsc と TSESTree (`@typescript-eslint/typescript-estree`) と並べて確かめます。
+この記事では、oxc が吐く AST の形が誰の仕様に合わせて作られているのかを確かめます。題材は `null` 型と後置の `!` で、oxc の木を、TypeScript AST (tsc の内部で使われている AST) と TSESTree (`@typescript-eslint/typescript-estree`) の木に並べて比べます。
 
 ## 今回読むファイル
 
@@ -164,18 +164,18 @@ AST の型を定義しているクレート `oxc_ast` の冒頭、`crates/oxc_as
                               │
       ┌───────────────────────┼───────────────────────────┐
       ▼                       ▼                           ▼
-     tsc                  TSESTree                       oxc
+     TypeScript AST        TSESTree                       oxc
   公式の実装            変換レイヤー                  Rust製の再実装
   パーサー +            tscのASTを受け取って           自前の手書きパーサー
   チェッカー            ESTree形式に組み替える          型の解決はしない
   （型を解決する）       （ESLintのために）             出力の形は TSESTree に寄せる
 ```
 
-左端が tsc、つまり Microsoft が配っている公式の実装です。
+左端が tsc、つまり Microsoft が配っている公式の実装です。tsc が内部で使っている AST は、`ts.createSourceFile` などのコンパイラ API で `ts.Node` の木として取り出せます。この記事ではこれを TypeScript AST と呼びます。
 
 真ん中の TSESTree は、自前のパーサーを持っていません。tsc を呼んで AST を作らせて、それを ESTree 形式に変換します。ESLint のエコシステムは ESTree の上に乗っているので、そのままでは食べられないからです。
 
-右端が今回の主役です。oxc は TSESTree のような変換役ではなく、自前の再帰下降パーサーで最初から AST を組み立てます。それでいて、出てくる木の形は真ん中の出力に合わせてある。つまり tsc と同じ形を作ってから直すのではなく、作る時点で違う形にしている。
+右端が今回の主役です。oxc は TSESTree のような変換役ではなく、自前の再帰下降パーサーで最初から AST を組み立てます。それでいて、出てくる木の形は真ん中の出力に合わせてある。つまり TypeScript AST と同じ形を作ってから直すのではなく、作る時点で違う形にしている。
 
 その「作る時点で違う」が一番はっきり出るのが、次の1行です。
 
@@ -241,9 +241,9 @@ Kind::Str | Kind::True | Kind::False => self.parse_literal_type(),
 
 こちらは `parse_literal_type` (`ts/types.rs:1118`) で、リテラルを読んでから `TSLiteralType` で包みます。ひとつの match 式の中で、null だけが別のグループに引っ越している。しかもその引っ越しの理由が、ECMAScript の仕様でも TypeScript の仕様でもなく、リンター向けパッケージへの追従だと書いてある。
 
-### tsc のほうは4.0で形が変わっていた
+### TypeScript AST のほうは4.0で形が変わっていた
 
-では合わせなかった場合、つまり tsc の形はどうなのか。ここは Claude に、バージョン違いの tsc を並べて `ts.createSourceFile` で AST をダンプしてもらいました。
+では合わせなかった場合、つまり TypeScript AST の形はどうなのか。ここは Claude に、バージョン違いの tsc を並べて `ts.createSourceFile` で AST をダンプしてもらいました。
 
 ```
 type A = null;
@@ -256,7 +256,7 @@ type A = null;
 
 比較用に同じファイルへ入れた他の型も出しています。`type B = undefined;` はどのバージョンでも `UndefinedKeyword` 単体、`type C = true;` はどれも `LiteralType > TrueKeyword`、`type D = string;` はどれも `StringKeyword`。動いたのは null だけでした。
 
-つまり oxc の `TSNullKeyword` は独自のノードではなく、3.9 までの tsc にあった形です。
+つまり oxc の `TSNullKeyword` は独自のノードではなく、3.9 までの TypeScript AST にあった形です。
 
 ### TSESTree が剥がしていた
 
@@ -284,7 +284,7 @@ case SyntaxKind.LiteralType: {
 
 というわけで、順番はこうでした。
 
-1. 3.9 まで、tsc では null 型はキーワードのノードだった
+1. 3.9 まで、TypeScript AST では null 型はキーワードのノードだった
 2. 4.0 で `LiteralType` の中に入るようになった
 3. TSESTree は既存の利用者のために、それを剥がして昔の形を保った
 4. oxc は、剥がした後の形を最初から作るようにした
@@ -303,40 +303,40 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 
 さっきの話は、ノード1個の形をどう決めるかでした。もう少し木らしい例として、非 null アサーションの後置 `!` と `?.` の組み合わせを見ます。ここもパースの手順ではなく、出来上がった木の形だけの話です。
 
-11通りの入力を3者に食わせて、できた木の形を並べました。tsc の列は、Claude に tsc 6.0.3 で確認してもらったものです。表にすると縦に長いので、木の略記で並べます。`Chain` は `ChainExpression`、`NonNull` は `TSNonNullExpression`、`Member?` と `Call?` は optional なメンバーアクセスと呼び出し、`[chain]` は tsc のノードに `NodeFlags.OptionalChain` が立っていることを表します。
+11通りの入力を3者に食わせて、できた木の形を並べました。TypeScript AST の列は、Claude に tsc 6.0.3 で確認してもらったものです。表にすると縦に長いので、木の略記で並べます。`Chain` は `ChainExpression`、`NonNull` は `TSNonNullExpression`、`Member?` と `Call?` は optional なメンバーアクセスと呼び出し、`[chain]` は TypeScript AST のノードに `NodeFlags.OptionalChain` が立っていることを表します。
 
 ```
 a!
-  oxc・TSESTree  NonNull(a)
-  tsc            NonNull(a)
+  oxc・TSESTree   NonNull(a)
+  TypeScript AST  NonNull(a)
 
 a?.b!
-  oxc・TSESTree  Chain(NonNull(Member?(a, b)))
-  tsc            NonNull(Prop?[chain](a, b))
+  oxc・TSESTree   Chain(NonNull(Member?(a, b)))
+  TypeScript AST  NonNull(Prop?[chain](a, b))
 
 a?.b!.c
-  oxc・TSESTree  Chain(Member(NonNull(Member?(a, b)), c))
-  tsc            Prop[chain](NonNull[chain](Prop?[chain](a, b)), c)
+  oxc・TSESTree   Chain(Member(NonNull(Member?(a, b)), c))
+  TypeScript AST  Prop[chain](NonNull[chain](Prop?[chain](a, b)), c)
 
 a?.b.c!
-  oxc・TSESTree  Chain(NonNull(Member(Member?(a, b), c)))
-  tsc            NonNull(Prop[chain](Prop?[chain](a, b), c))
+  oxc・TSESTree   Chain(NonNull(Member(Member?(a, b), c)))
+  TypeScript AST  NonNull(Prop[chain](Prop?[chain](a, b), c))
 
 a!.b?.c
-  oxc・TSESTree  Chain(Member?(Member(NonNull(a), b), c))
-  tsc            Prop?[chain](Prop(NonNull(a), b), c)
+  oxc・TSESTree   Chain(Member?(Member(NonNull(a), b), c))
+  TypeScript AST  Prop?[chain](Prop(NonNull(a), b), c)
 
 a?.[0]!
-  oxc・TSESTree  Chain(NonNull(Member?(a, [0])))
-  tsc            NonNull(Elem?[chain](a, 0))
+  oxc・TSESTree   Chain(NonNull(Member?(a, [0])))
+  TypeScript AST  NonNull(Elem?[chain](a, 0))
 
 a?.()!
-  oxc・TSESTree  Chain(NonNull(Call?(a)))
-  tsc            NonNull(Call?[chain](a))
+  oxc・TSESTree   Chain(NonNull(Call?(a)))
+  TypeScript AST  NonNull(Call?[chain](a))
 
 a?.b!(x)
-  oxc・TSESTree  Chain(Call(NonNull(Member?(a, b))))
-  tsc            Call[chain](NonNull[chain](Prop?[chain](a, b)))
+  oxc・TSESTree   Chain(Call(NonNull(Member?(a, b))))
+  TypeScript AST  Call[chain](NonNull[chain](Prop?[chain](a, b)))
 ```
 
 読み取れることが2つあります。
@@ -345,7 +345,7 @@ a?.b!(x)
 
 とはいえ、これは差というより設定の話でした。oxc のパーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。オンのあいだは括弧が `ParenthesizedExpression` というノードとして残る。ESTree の仕様に括弧のノードは無いので、切れば消えます。つまり実質は全一致です。
 
-ふたつめ。tsc だけ、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。Claude に 5.7.3 の `SyntaxKind` から Chain を含む名前を探してもらうと0件で、代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
+ふたつめ。TypeScript AST だけ、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。Claude に 5.7.3 の `SyntaxKind` から Chain を含む名前を探してもらうと0件で、代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
 
 面白いのは `!` の位置でフラグの付き方が変わるところです。`a?.b!.c` を Claude に tsc 6.0.3 でダンプしてもらうと、こうなりました。
 
@@ -392,7 +392,7 @@ fn map_to_chain_expression(&self, span: Span, expr: Expression<'a>) -> Expressio
 }
 ```
 
-メンバーアクセスと呼び出しが並んでいるのは、ECMAScript のオプショナルチェーンとして当然です。3つめの腕だけが TypeScript 固有で、しかもこれが無いと `a?.b!` の `NonNull` が `Chain` の外に出てしまいます。tsc と同じ形になってしまう、と言ってもいい。
+メンバーアクセスと呼び出しが並んでいるのは、ECMAScript のオプショナルチェーンとして当然です。3つめの腕だけが TS 固有で、しかもこれが無いと `a?.b!` の `NonNull` が `Chain` の外に出てしまいます。TypeScript AST と同じ形になってしまう、と言ってもいい。
 
 後置の記号を読む腕より、この腕のほうが「誰に合わせているのか」をよく語っている気がします。パースそのものには要らない腕だからです。
 
@@ -420,18 +420,18 @@ TSTypeAliasDeclaration
 
 型定義のほうを見ても同じです。`oxc_ast` の `TSLiteralType` (`ast/ts.rs:215`) の `literal` フィールドの型は `TSLiteral` (`ast/ts.rs:226`) という列挙で、その選択肢に `TemplateLiteral` がいます。定義されている場所は `ast/js.rs:419`、つまり JavaScript 側のファイルです。逆向きもあって、変数宣言などが持つ `type_annotation` は TS 側のノードを指します。ファイルは分かれていても、型としては相互に乗り入れている。
 
-ここが、実例1の見え方を変えます。oxc には、TSESTree のように tsc の AST を ESTree 形式に直す段が存在しません。`--estree` という出力は、この1本の木をそのまま書き出したものです。だから形を合わせたければ、後から直すのではなく、作るときに合わせるしかない。null の判定がパーサーの match 式の腕に書いてあるのは、そこしか書く場所が無いからでもあります。
+ここが、実例1の見え方を変えます。oxc には、TSESTree のように TypeScript AST を ESTree 形式に直す段が存在しません。`--estree` という出力は、この1本の木をそのまま書き出したものです。だから形を合わせたければ、後から直すのではなく、作るときに合わせるしかない。null の判定がパーサーの match 式の腕に書いてあるのは、そこしか書く場所が無いからでもあります。
 
-念のため他の2者も確認しました。TSESTree の 8.26.1 は同じく `TSLiteralType` の中に `TemplateLiteral` を入れます。tsc は `LiteralType` の中に `NoSubstitutionTemplateLiteral` が入る形で、こちらは箱と中身の名前が違うだけです。
+念のため他の2者も確認しました。TSESTree の 8.26.1 は同じく `TSLiteralType` の中に `TemplateLiteral` を入れます。TypeScript AST は `LiteralType` の中に `NoSubstitutionTemplateLiteral` が入る形で、こちらは箱と中身の名前が違うだけです。
 
 ## まとめ
 
 - oxc が出す AST の名前と形は TSESTree (typescript-eslint の ast-spec) に寄せてある。ただし TS ノードのフィールドの並び順は tsc に倣う、と `oxc_ast` のドキュメントコメントに書いてある
-- null 型の木は tsc だけ違う。4.0から `LiteralType` で包むようになり、TSESTree はそれを剥がして昔の形を保ち、oxc は剥がした後の形を最初から作る
-- 後置の `!` と `?.` の組み合わせも、括弧のノードを残すかどうかを除けば、oxc と TSESTree は一致した。tsc は `ChainExpression` を持たず、ノードにフラグを立てて表す
+- null 型の木は TypeScript AST だけ違う。4.0から `LiteralType` で包むようになり、TSESTree はそれを剥がして昔の形を保ち、oxc は剥がした後の形を最初から作る
+- 後置の `!` と `?.` の組み合わせも、括弧のノードを残すかどうかを除けば、oxc と TSESTree は一致した。TypeScript AST は `ChainExpression` を持たず、ノードにフラグを立てて表す
 - oxc の AST は1本で、TS のノードの中に JS のノードが直接入る。変換の段が無いぶん、互換性への配慮がパーサーの match 式の腕として埋まっている
 
-「tsc と同じものを Rust で速く作り直した」という話ではなく、「合わせる相手を選んだ」という話でした。どちらに合わせるかで木の形が変わるので、oxc の出力を読んでいて tsc と違うところに出会ったら、まず TSESTree 側を見ると答えがあることが多いです。
+「tsc と同じものを Rust で速く作り直した」という話ではなく、「合わせる相手を選んだ」という話でした。どちらに合わせるかで木の形が変わるので、oxc の出力を読んでいて TypeScript AST と違うところに出会ったら、まず TSESTree 側を見ると答えがあることが多いです。
 
 次回は、`1 + 1 as number / 2` という1行にまつわる事件です。`as` の優先順位が、7.0で意図的に変えられた話をします。
 
