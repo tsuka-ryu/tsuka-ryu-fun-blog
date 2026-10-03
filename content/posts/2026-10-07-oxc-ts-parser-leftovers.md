@@ -21,7 +21,7 @@ crates/oxc_parser/src/js/grammar.rs        245行   分割代入のためのカ�
 crates/oxc_parser/src/lib.rs             1,340行   パースの最後に出すエラー
 ```
 
-アロー関数の節では、比較のために acorn (8.18.0) と tsc (6.0.3) も出てきます。この2つの中身と実行結果は、Claude に確認してもらったものです。
+tuple type、型述語、アロー関数の節では、比較のために tsc (6.0.3) と acorn (8.18.0) も出てきます。この2つの中身と実行結果は、Claude に確認してもらったものです。
 
 ## 下準備: oxc の AST を手元で出す
 
@@ -39,7 +39,19 @@ git -C oxc checkout FETCH_HEAD
 
 ```bash
 cd oxc
-for src in 'type M = { [K in T]: U };' 'type I = { [k: string]: U };' 'type A = [...string[], ...number[]];' 'type B<T extends unknown[]> = [...string[], ...T];' 'type C = [...string[], ...readonly number[]];' 'type L = `a${string}b${number}c`;' 'declare function f(x: unknown): x is string;' 'type is = number; declare function g(x: unknown): [is];' 'declare function h(x: unknown): asserts x;' '({ a = 1 }) => a;' '({ a = 1 });' '({ a = 1 } = obj);'; do
+for src in \
+  'type M = { [K in T]: U };' \
+  'type I = { [k: string]: U };' \
+  'type A = [...string[], ...number[]];' \
+  'type B<T extends unknown[]> = [...string[], ...T];' \
+  'type C = [...string[], ...readonly number[]];' \
+  'type L = `a${string}b${number}c`;' \
+  'declare function f(x: unknown): x is string;' \
+  'type is = number; declare function g(x: unknown): [is];' \
+  'declare function h(x: unknown): asserts x;' \
+  '({ a = 1 }) => a;' \
+  '({ a = 1 });' \
+  '({ a = 1 } = obj);'; do
   printf '%s\n' "$src" > /tmp/x.ts
   echo "===== $src"
   cargo run -q -p oxc_parser --example parser -- /tmp/x.ts --estree
@@ -187,27 +199,7 @@ fn is_start_of_mapped_type(&mut self) -> bool {
 
 ## tuple type: rest 要素の重複は、書かれた形で判定する
 
-tuple type の rest 要素 (`...string[]` のように `...` を付けた要素) は、1つのタプルに1個までしか書けません。
-
-```ts
-type A = [...string[], ...number[]];
-```
-
-oxc のパーサーに流すと、AST は最後まで作られたうえで、エラーが1件出ます。
-
-```text
-  x TS(1265): A rest element cannot follow another rest element.
-   ,----
- 1 | type A = [...string[], ...number[]];
-   :           ^^^^^|^^^^^  ^^^^^|^^^^^
-   :                |            `-- Second rest element here
-   :                `-- First seen here
-   `----
-
-Parsed with Errors.
-```
-
-### パーサーが見ているのは、`...` の後ろの見た目
+tuple type の rest 要素 (`...string[]` のように `...` を付けた要素) は、1つのタプルに1個までしか書けません。`type A = [...string[], ...number[]];` と書くと、oxc ではパーサーが TS1265 (A rest element cannot follow another rest element.) のエラーを出します。
 
 この検査は `parse_tuple_type` (`ts/types.rs:967`) にあります。要素を1つ読むたびに呼ばれるクロージャの前半です。後半には optional 要素 (`a?: T`) の並び順の検査が続きますが、ここでは省きます。
 
@@ -242,23 +234,17 @@ if let TSTupleElement::TSRestType(rest) = &tuple
 }
 ```
 
-rest 要素として数えるのは、`...` の後ろが `X[]` という配列型の構文か、`Array` という名前の型参照のときだけです。2個目が見つかると、1個目の位置 (`seen_rest_span`) と今の要素の位置の2か所にラベルを付けてエラーにします。
+rest 要素として数えるのは、`...` の後ろが `X[]` という配列型の構文か、`Array` という名前の型参照のときだけです。この条件から、2つのことが読めます。
 
-コメントにあるとおり、`...T` のように型パラメータが来た場合は数えません。`T` が何に展開されるかは、この時点では分からないからです。実際、`type B<T extends unknown[]> = [...string[], ...T];` はエラーなしで通ります。
+1つ目は、冒頭のコメントにあるとおり、`...T` のように型パラメータが来た場合は数えないことです。`T` が何に展開されるかは、この時点では分からないからです。実際、`type B<T extends unknown[]> = [...string[], ...T];` はエラーなしで通ります。
 
-裏を返すと、この判定は型を解決せず、書かれた形だけを見ています。そのため、中身は配列でも見た目が `X[]` でないものは数えません。
+2つ目は、型を解決せず、書かれた形だけを見ているので、中身は配列でも見た目が `X[]` でないものは数えないことです。
 
 ```text
 type C = [...string[], ...readonly number[]];
 ```
 
-この入力の `readonly number[]` は、`readonly` という前置の型演算子のノード (`TSTypeOperator`) が配列型を包んだ形なので、上の `match` の `_ => false` に落ちます。oxc のパーサーはこれを `Parsed Successfully.` で通しました。Claude に oxc の `crates` の中を探してもらいましたが、TS1265 を出すコードはパーサーの `diagnostics.rs` 以外に見つけられませんでした。
-
-### tsc ではチェッカーの検査
-
-ここは Claude に tsc 6.0.3 で確認してもらった内容です。
-
-tsc では、同じ TS1265 をパーサーではなく型チェッカーの `checkTupleType` が出しています。`...` の後ろの型を `getTypeFromTypeNode` で解決してから、配列型か、rest 要素を含むタプル型のときだけ数える作りです。そのため、上の `type C` も、`type S = number[];` というエイリアスを挟んだ `[...string[], ...S]` も、tsc ではエラーになりました。型パラメータの `...T` が通るのは oxc と同じでした。
+この `readonly number[]` は、`readonly` という前置の型演算子のノード (`TSTypeOperator`) が配列型を包んだ形なので、上の `match` の `_ => false` に落ちます。oxc のパーサーはこれを `Parsed Successfully.` で通しました。Claude に tsc 6.0.3 で確認してもらうと、こちらではこの `type C` がエラーになります。同じ TS1265 を型チェッカーが出していて、`...` の後ろの型を解決してから数えるからです。
 
 型を解決しないパーサーが、本来は型の解決が要る検査を、構文の形で近似している、ということになります。
 
@@ -551,6 +537,7 @@ declare function g(x: unknown): [is];
 oxc は、`(` に着いたところで、まず `is_parenthesized_arrow_function_expression` (`js/arrow.rs:58`) で見当を付けます。返り値の `Tristate` (`js/mod.rs:17`) は、真と偽に「まだわからない」を足した3値です。
 
 ```rust
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Tristate {
     True,
     False,
@@ -718,7 +705,7 @@ fn check_unfinished_errors(&mut self) {
 ## まとめ
 
 - mapped type とインデックスシグネチャは、`{` `[` 識別子 の次のトークンで分かれる。何トークン見れば決まるかが固定なので、投機ではなく `lookahead` で済む
-- tuple type の rest 要素の重複は、oxc ではパーサーが `...` の後ろの書かれた形で判定する。tsc はチェッカーが型を解決してから判定するので、`readonly number[]` やエイリアスの扱いが違う
+- tuple type の rest 要素の重複は、oxc ではパーサーが `...` の後ろの書かれた形で判定する。tsc はチェッカーが型を解決してから判定するので、`readonly number[]` の扱いが違う
 - template literal type の `}` は、レキサーが最初は閉じ波括弧として切り、パーサーが頼んでテンプレートの続きとして読み直させる。この仕組みは式のテンプレートリテラルと共通
 - 型述語の `x is` は、次の1トークンを `peek_token` で覗くだけで判定する。tsc と ts-go は投機の形で、oxc も2026年4月までは同じ形だった
 - アロー関数の引数は、`Tristate` で見当を付け、`Maybe` のときだけ投機パースする。一方で、分割代入の左辺にはカバー文法を使っていて、oxc の中に2つのやり方が同居している
