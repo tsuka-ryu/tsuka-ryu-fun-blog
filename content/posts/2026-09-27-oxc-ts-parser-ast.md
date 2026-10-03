@@ -118,6 +118,20 @@ AST の型を定義しているクレート `oxc_ast` の冒頭、`crates/oxc_as
 
 左端が tsc、つまり Microsoft が配っている公式の実装です。tsc が内部で使っている AST は、`ts.createSourceFile` などのコンパイラ API で `ts.Node` の木として取り出せます。この記事ではこれを TypeScript AST と呼びます。
 
+TypeScript AST は、ESTree の木と比べるとかなり読みにくい木みたいです (シンプルに JSON にダンプしたりするのが難しい)。Claude に tsc 6.0.3 で `type A = null;` の `LiteralType` のノードを1つ覗いてもらうと、こうなっていました。
+
+```text
+kind = 202  pos = 8  end = 13  getStart() = 9
+自前のキー: pos, end, kind, id, flags, modifierFlagsCache, transformFlags, parent, original, emitNode, literal
+```
+
+- ノードの種類は `kind` に数値で入っていて、名前は `ts.SyntaxKind` で引き直さないと分かりません
+- `pos` は、直前の空白まで含んだ位置です (`=` の後ろの空白の位置8から始まる)。トークン本体の始まり (9) は `getStart()` で別に求めます。oxc の出力では、ここの `start` は9でした
+- `parent` で親を指しているので木が循環していて、`JSON.stringify` に渡すとエラーになります
+- `flags` や `transformFlags`、`emitNode` のように、型チェックや JavaScript への変換・出力で使う欄が、ノード自身に付いています
+
+これは、作られた目的の違いだと考えると納得がいきます。TypeScript AST は、tsc というコンパイラが自分で使うための内部の構造です。親をたどったり、フラグで状態を持たせたり、エディタで書き換えた部分だけ作り直したり (`ts.updateSourceFile`) するのに都合よく作られていて、外から読みやすいことは優先されていません。一方の ESTree は、[README](https://github.com/estree/estree) によると、Firefox の SpiderMonkey が出していた形式が「JavaScript のソースを扱うツールの共通語 (lingua franca)」として広まったもので、今は ESLint・Acorn・Babel の開発者が運営するコミュニティの標準です。いろいろなツールが同じ木を読むための形なので、ノードの種類も `"type": "TSNullKeyword"` のように名前で書かれています。
+
 真ん中の TSESTree は、自前のパーサーを持っていません。tsc を呼んで AST を作らせて、それを ESTree 形式に変換します。ESLint のエコシステムは ESTree の上に乗っているので、そのままでは食べられないからです。
 
 Claude に 8.26.1 の中身を確認してもらうと、`dist/parser.js` の `parse()` の本体はこの2段でした。
@@ -362,6 +376,10 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 
 外側から `ChainExpression`、`TSNonNullExpression`、`MemberExpression` の順に入れ子になっています。`?.` は、`MemberExpression` の `"optional": true` で表されています。
 
+TSESTree の出力も同じ形でした。違いは、位置 (`start` と `end`) と識別子の `"typeAnnotation": null` を、oxc は出して TSESTree は出さない (後者はキーごと無い) という2点だけです。ノードの種類と入れ子は一致していて、`a?.b!.c` でも同じでした。
+
+ひとつだけ見た目が割れるのは、`(a?.b)!.c` のように括弧を付けたときです。oxc だけ、括弧が `ParenthesizedExpression` というノードとして残ります。とはいえ、これは差というより設定の話でした。パーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。ESTree の仕様に括弧のノードは無いので、切れば消えます。
+
 #### 補足: `ChainExpression` と `"optional": true` の役割
 
 この補足は、Claude に調べてもらった内容です (実行結果、仕様の該当箇所と引用を含みます)。
@@ -381,17 +399,13 @@ a?.b.c; // undefined
 
 ECMAScript の仕様では、これが文法に表れています。[13.3.9 Optional Chains](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-optional-chains) の `OptionalChain` は、`?. IdentifierName` で始まり、後ろに `. IdentifierName` や `[ Expression ]`、`Arguments` を続けられる形で定義されています。`a?.b.c` の `?.b.c` は、全体で1つの `OptionalChain` です。そして評価の手順 (13.3.9.1) には、`?.` の手前の値が `undefined` か `null` なら、`OptionalChain` を評価せずに `undefined` を返す、と書かれています。括弧で囲った `(a?.b)` はそこで1つの式として閉じるので、後ろの `.c` はチェーンに入りません。
 
-ESTree は、この2つの情報を別々のノードに持たせています。[仕様 (es2020.md)](https://github.com/estree/estree/blob/master/es2020.md#chainexpression) の `ChainExpression` の説明にはこうあります。
+ESTree は、この2つの情報を別々のノードに持たせています。[仕様 (es2020.md)](https://github.com/estree/estree/blob/875bf70440a8870c4a663865a7a41300cf1add55/es2020.md#chainexpression) の `ChainExpression` の説明にはこうあります。
 
 > If the `callee|object` property is evaluated to nullish and the `optional` property is `true`, then the node and ancestor nodes are skipped until the closest `ChainExpression` node, and the result of the `ChainExpression` node becomes `undefined`.
 
 `"optional": true` が付いたノードで、手前の値 (`object` や `callee`) が null か undefined だったら、そこから一番近い `ChainExpression` までの祖先をまとめて飛ばし、`ChainExpression` の結果を `undefined` にする、という意味です。`"optional": true` が「どこで確かめるか」、`ChainExpression` が「どこまで飛ばすか」にあたります。同じ仕様には、[`obj?.aaa.bbb`](https://github.com/estree/estree/blob/875bf70440a8870c4a663865a7a41300cf1add55/es2020.md?plain=1#L89-L103) と [`(obj?.aaa).bbb`](https://github.com/estree/estree/blob/875bf70440a8870c4a663865a7a41300cf1add55/es2020.md?plain=1#L158-L172) の木を並べた例も載っています。
 
 これで上の木も読めます。`a?.b!` では、`TSNonNullExpression` が `ChainExpression` の内側にあるので、`!` もチェーンの一部として、飛ばす範囲に入っています。
-
-TSESTree の出力も同じ形でした。違いは、位置 (`start` と `end`) と識別子の `"typeAnnotation": null` を、oxc は出して TSESTree は出さない (後者はキーごと無い) という2点だけです。ノードの種類と入れ子は一致していて、`a?.b!.c` でも同じでした。
-
-ひとつだけ見た目が割れるのは、`(a?.b)!.c` のように括弧を付けたときです。oxc だけ、括弧が `ParenthesizedExpression` というノードとして残ります。とはいえ、これは差というより設定の話でした。パーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。ESTree の仕様に括弧のノードは無いので、切れば消えます。
 
 ### TypeScript AST には ChainExpression が無い
 
@@ -516,11 +530,11 @@ type F = `abc`;
 
 型のノードの中に、式のノードが直接入っています。しかもこの `TemplateLiteral` は、JavaScript のコードに出てくるテンプレートリテラルと同じ型です。
 
+TSESTree の出力も同じで、`TSLiteralType` の中に `TemplateLiteral` が入ります。TypeScript AST (Claude に tsc 6.0.3 で確認してもらったもの) は `LiteralType` の中に `NoSubstitutionTemplateLiteral` が入る形で、箱と中身の名前が違うだけで、型の中に式のノードが入る点は同じです。
+
 型定義のほうを見ても同じです。`oxc_ast` の `TSLiteralType` (`ast/ts.rs:215`) の `literal` フィールドの型は `TSLiteral` (`ast/ts.rs:226`) という列挙で、その選択肢に `TemplateLiteral` がいます。定義されている場所は `ast/js.rs:419`、つまり JavaScript 側のファイルです。逆向きもあって、変数宣言などが持つ `type_annotation` は TS 側のノードを指します。ファイルは分かれていても、型としては相互に乗り入れている。
 
 ここが、実例1の見え方を変えます。oxc には、TSESTree のように TypeScript AST を ESTree 形式に直す段が存在しません。`--estree` という出力は、この1本の木をそのまま書き出したものです。だから形を合わせたければ、後から直すのではなく、作るときに合わせるしかない。null の判定がパーサーの match 式の腕に書いてあるのは、そこしか書く場所が無いからでもあります。
-
-念のため他の2者も確認しました。TSESTree の 8.26.1 は同じく `TSLiteralType` の中に `TemplateLiteral` を入れます。TypeScript AST は `LiteralType` の中に `NoSubstitutionTemplateLiteral` が入る形で、こちらは箱と中身の名前が違うだけです。
 
 ## まとめ
 
@@ -532,6 +546,8 @@ type F = `abc`;
 「tsc と同じものを Rust で速く作り直した」という話ではなく、「合わせる相手を選んだ」という話でした。どちらに合わせるかで木の形が変わるので、oxc の出力を読んでいて TypeScript AST と違うところに出会ったら、まず TSESTree 側を見ると答えがあることが多いです。
 
 次回は、`1 + 1 as number / 2` という1行にまつわる事件です。`as` の優先順位が、7.0で意図的に変えられた話をします。
+
+なお、この記事で自分で実際に読んだのは oxc のパーサーだけです。tsc と TSESTree の中身や、仕様の該当箇所は Claude に確認してもらったものなので、間違っていたら指摘してもらえると助かります。
 
 ---
 
