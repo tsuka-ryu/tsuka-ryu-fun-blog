@@ -21,6 +21,39 @@ tasks/coverage/src/typescript/constants.rs        646行   互換性テストの
 
 自分で読んだのは1つ目のパーサーだけです。2つ目から4つ目の `oxc_semantic` と `tasks/coverage` の中身は、Claude に確認してもらいました。比較に使う tsc 6.0.3 の実行結果と、Go 版の tsc のソース ([microsoft/TypeScript](https://github.com/microsoft/TypeScript/tree/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc) の rev `f29aeb9f` の `tsc/` 以下) も、Claude に確認してもらったものです。
 
+## 下準備: oxc のパーサーとセマンティック解析を手元で走らせる
+
+oxc 側の結果は、次の手順で手元でも同じものが出せます。Rust のツールチェーンが入っていれば動きます。
+
+まず oxc を記事と同じリビジョンで取ってきます。履歴まで丸ごと clone すると時間がかかるので、このコミットだけを `--depth 1` で浅く取ります。
+
+```bash
+git init oxc
+git -C oxc fetch --depth 1 https://github.com/oxc-project/oxc.git 1aa5ec11ce0dcbb0da7799e777c2492211908fbb
+git -C oxc checkout FETCH_HEAD
+```
+
+次に、入力を4つのファイルに書いて、パーサーのサンプルとセマンティック解析のサンプルの両方に流します。
+
+```bash
+cd oxc
+printf '%s\n' 'type A = [...string[], ...number[]];' > /tmp/rest.ts
+printf '%s\n' 'type A = [...string[], ...number[]];' 'let x = ;' > /tmp/rest-and-syntax.ts
+printf '%s\n' 'type S = string[];' 'type A = [...S, ...S];' > /tmp/alias.ts
+printf '%s\n' 'type C<T> = keyof infer U;' > /tmp/infer.ts
+for f in rest rest-and-syntax alias infer; do
+  echo "===== $f parser"
+  cargo run -q -p oxc_parser --example parser -- /tmp/$f.ts
+  echo "===== $f semantic"
+  cargo run -q -p oxc_semantic --example semantic -- /tmp/$f.ts
+done
+```
+
+2つのサンプルは、出力の作法が違います。
+
+- パーサーのサンプル (`crates/oxc_parser/examples/parser.rs`) は、エラーがあればそれを並べて最後に `Parsed with Errors.` と出します。エラーが無ければ `Parsed Successfully.` です
+- セマンティック解析のサンプル (`crates/oxc_semantic/examples/semantic.rs`) は、まずパースします。パーサーがエラーを出したら `Parsing failed:` に続けてそれを出して終わります。パースが通ったときだけセマンティック解析に進み、そこでエラーが出れば `Semantic analysis failed:` に続けて出し、出なければ何も表示しません
+
 ## 事前知識: パーサー、セマンティック解析、型チェッカー
 
 コンパイラがソースコードを検査するとき、仕事はおおまかに3段に分かれます。
@@ -45,6 +78,7 @@ oxc では、パーサーが `oxc_parser`、セマンティック解析が `oxc_
 oxc もこの番号を流用していて、tsc と同じエラーには同じ番号を付けて出します。パーサーの `diagnostics.rs:28` にあるヘルパーがこれです。
 
 ```rust
+#[inline]
 fn ts_error<M>(code: &'static str, message: M) -> OxcDiagnostic
 where
     M: Into<Cow<'static, str>>,
@@ -80,36 +114,6 @@ for (const file of process.argv.slice(2)) {
 ```
 
 パーサーのエラーは `getSyntacticDiagnostics` が返します。`getSemanticDiagnostics` はバインダーとチェッカーのエラーをまとめて返すので、ソースファイルの `bindDiagnostics` に入っているものをバインダー、残りをチェッカーとして出し分けています。
-
-## 下準備: oxc のパーサーとセマンティック解析を手元で走らせる
-
-oxc 側の結果は、次の手順で手元でも同じものが出せます。Rust のツールチェーンが入っていれば動きます。
-
-まず oxc を記事と同じリビジョンで取ってきます。履歴まで丸ごと clone すると時間がかかるので、このコミットだけを `--depth 1` で浅く取ります。
-
-```bash
-git init oxc
-git -C oxc fetch --depth 1 https://github.com/oxc-project/oxc.git 1aa5ec11ce0dcbb0da7799e777c2492211908fbb
-git -C oxc checkout FETCH_HEAD
-```
-
-次に、入力を4つのファイルに書いて、パーサーのサンプルとセマンティック解析のサンプルの両方に流します。
-
-```bash
-cd oxc
-printf '%s\n' 'type A = [...string[], ...number[]];' > /tmp/rest.ts
-printf '%s\n' 'type A = [...string[], ...number[]];' 'let x = ;' > /tmp/rest-and-syntax.ts
-printf '%s\n' 'type S = string[];' 'type A = [...S, ...S];' > /tmp/alias.ts
-printf '%s\n' 'type C<T> = keyof infer U;' > /tmp/infer.ts
-for f in rest rest-and-syntax alias infer; do
-  echo "===== $f parser"
-  cargo run -q -p oxc_parser --example parser -- /tmp/$f.ts
-  echo "===== $f semantic"
-  cargo run -q -p oxc_semantic --example semantic -- /tmp/$f.ts
-done
-```
-
-2つのサンプルは、出力の作法が違います。パーサーのサンプル (`crates/oxc_parser/examples/parser.rs`) は、エラーがあればそれを並べて最後に `Parsed with Errors.`、無ければ `Parsed Successfully.` と出します。セマンティック解析のサンプル (`crates/oxc_semantic/examples/semantic.rs`) は、まずパースして、パーサーがエラーを出したら `Parsing failed:` に続けてそれを出して終わります。パースが通ったときだけセマンティック解析に進み、そこでエラーが出れば `Semantic analysis failed:` に続けて出し、出なければ何も表示しません。
 
 ## 結果の一覧
 
@@ -282,7 +286,9 @@ func (c *Checker) grammarErrorOnNode(node *ast.Node, message *diagnostics.Messag
 }
 ```
 
-同じファイルにパーサーのエラーが1件でもあれば、出さずに帰ります。Go 版の tsc は、チェッカーの中に文法の検査 (grammar check) を集めたこの2,237行のファイルを持っていて、そこで `grammarErrorOnNode` を通して出すエラーは、パースが通ったファイルにだけ出る、という扱いです。
+同じファイルにパーサーのエラーが1件でもあれば、出さずに帰ります。チェッカーの中の文法の検査 (grammar check) を集めたこのファイルで、`grammarErrorOnNode` を通して出すエラーは、パースが通ったファイルにだけ出る、という扱いです。
+
+上の実行結果は JS 版の tsc 6.0.3 で取ったものですが、Claude に確認してもらうと、6.0.3 の `typescript.js` にも同じ中身の `grammarErrorOnNode` があり、TS1265 もこの関数で出していました。
 
 ## 実例2: エイリアスを挟むと、oxc ではどこも出さない
 
@@ -335,8 +341,6 @@ Positive は正しいコードをエラーなく通せたか、Negative はエ�
 ```
 
 同じエラーコードでも tsc の別々の部品から出ることがあり、パースの時点で分かる場合も、型推論の結果で初めて分かる場合もある。だからエラーコードだけでは除外できず、ファイル単位で除外している、という内容です。TS1265 はまさにその例で、`...string[]` ならパースの時点で分かり、`...S` なら型を解決して初めて分かります。
-
-oxc の周りで `[...S, ...S]` を拾えるとしたら、リンターの oxlint の型情報を使うモードです。[ドキュメント](https://github.com/oxc-project/website/blob/82f564eca3a04b10ba400115b84876d3af4cff51/src/docs/guide/usage/linter/type-aware.md)によると、このモードは別の実行ファイルの tsgolint が担当していて、これが Go 版の tsc でプログラムを組み立てます。さらに `--type-check` を付けると、型チェッカーのエラーもリントの結果と一緒に出せるとあります。CLI の [`--type-check` の説明](https://github.com/oxc-project/oxc/blob/1aa5ec11ce0dcbb0da7799e777c2492211908fbb/apps/oxlint/src/command/lint.rs#L57-L59)は「Enable experimental type checking (includes TypeScript compiler diagnostics)」で、まだ実験的な扱いです (ここは Claude に確認してもらったもので、実際には走らせていません)。
 
 ## 実例3: `keyof infer U` は、oxc ではセマンティック解析が出す
 
