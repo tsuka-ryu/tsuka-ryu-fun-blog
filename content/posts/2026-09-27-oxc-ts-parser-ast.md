@@ -204,7 +204,7 @@ TSTypeAliasDeclaration
     literal: Literal (true)
 ```
 
-真偽値のほうは `TSLiteralType` という箱に入って、その中にリテラルが入る。JavaScript の値としては `null` も `true` も同じくリテラルなのに、片方だけ箱がありません。
+真偽値のほうは `TSLiteralType` という箱に入って、その中にリテラルが入る。JavaScript の文法では `null` も `true` も同じ `Literal` の仲間 ([ECMAScript 2025 の 13.2.3 Literals](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-primary-expression-literals)) なのに、片方だけ箱がありません。
 
 ### パーサーの中では、腕が違う
 
