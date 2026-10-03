@@ -130,7 +130,7 @@ kind = 202  pos = 8  end = 13  getStart() = 9
 - `parent` で親を指しているので木が循環していて、`JSON.stringify` に渡すとエラーになります
 - `flags` や `transformFlags`、`emitNode` のように、型チェックや JavaScript への変換・出力で使う欄が、ノード自身に付いています
 
-これは、作られた目的の違いだと考えると納得がいきます。TypeScript AST は、tsc というコンパイラが自分で使うための内部の構造です。親をたどったり、フラグで状態を持たせたり、エディタで書き換えた部分だけ作り直したり (`ts.updateSourceFile`) するのに都合よく作られていて、外から読みやすいことは優先されていません。一方の ESTree は、[README](https://github.com/estree/estree) によると、Firefox の SpiderMonkey が出していた形式が「JavaScript のソースを扱うツールの共通語 (lingua franca)」として広まったもので、今は ESLint・Acorn・Babel の開発者が運営するコミュニティの標準です。いろいろなツールが同じ木を読むための形なので、ノードの種類も `"type": "TSNullKeyword"` のように名前で書かれています。
+これは、作られた目的の違いだと考えると納得がいきます。TypeScript AST は、tsc というコンパイラが自分で使うための内部の構造です。親をたどったり、フラグで状態を持たせたり、エディタで書き換えた部分だけ作り直したり (`ts.updateSourceFile`) するのに都合よく作られていて、外から読みやすいことは優先されていません。型チェックの結果そのものは、ノードではなく型チェッカーが持つ `nodeLinks` という別の表にしまわれていて、ノードに付いている欄はエディタ支援 (JS 版では tsserver、Go 版では LSP のサーバー) や、変換・出力のためのものです (ここも Claude に確認してもらいました)。言ってみれば TypeScript AST は、読むための木ではなく、コンパイラとエディタが働くための作業台です。一方の ESTree は、[README](https://github.com/estree/estree) によると、Firefox の SpiderMonkey が出していた形式が「JavaScript のソースを扱うツールの共通語 (lingua franca)」として広まったもので、今は ESLint・Acorn・Babel の開発者が運営するコミュニティの標準です。いろいろなツールが同じ木を読むための形なので、ノードの種類も `"type": "TSNullKeyword"` のように名前で書かれています。
 
 真ん中の TSESTree は、自前のパーサーを持っていません。tsc を呼んで AST を作らせて、それを ESTree 形式に変換します。ESLint のエコシステムは ESTree の上に乗っているので、そのままでは食べられないからです。
 
