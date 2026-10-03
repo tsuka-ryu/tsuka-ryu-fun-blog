@@ -252,7 +252,7 @@ Microsoft 自身も Go に移植するときに、JSDoc の書き方を一部捨
 
 Claude に oxc の履歴を見てもらうと、2026年6月の1か月で、パーサーに `perf(parser)` で始まるコミットが23本入っていました。多くは Boshen さんによるもので、checkpoint を取っていた判定を `peek_token` に置き換えるものや、`lookahead` の手前に近道を置くものが並んでいます。その中から2つを見ます。
 
-### TS の宣言の入口: at_start_of_ts_declaration
+### TS の宣言の入口: `at_start_of_ts_declaration`
 
 1つ目は文の入口です。`type` や `interface`、`namespace` は TypeScript の宣言の始まりですが、JavaScript では普通の識別子として使えます。`type = 5;` は変数 `type` への代入です。なので文の入口では、これらのキーワードが来るたびに「ここから TS の宣言が始まるか」を判定します。それが `at_start_of_ts_declaration` (`ts/statement.rs:863`) です。
 
@@ -334,7 +334,7 @@ oxc の worker は、この `lookAhead` に渡される関数の移植にあた�
 
 ### 同じ判定を2か所に持つ
 
-この近道で、同じ判定がソースの2か所に書かれることになりました。高速経路の腕と、遅い経路にあたる worker の腕です。こちらも消せません。`declare const x` を読むときに、`declare` を食べたあとの `const` を、自分の `Kind::Const` の腕で判定するからです。
+この近道で、同じ判定がソースの2か所に書かれることになりました。高速経路の腕と、遅い経路にあたる worker の腕です。worker の側の、高速経路と重なる腕も消せません。`declare const x` を読むときに、`declare` を食べたあとの `const` を、自分の `Kind::Const` の腕で判定するからです。
 
 2か所が食い違うと、同じ入力でも高速経路を通るか遅い経路を通るかで結果が変わります。2か所が一致していることを示しているのは、冒頭のコメントの「mirrors ... exactly」の1文と、PR で確かめた出力の一致です。tsc を写した worker が正しさの本体で、高速経路はそれと同じ答えを安く出すための写し、という関係になっています。
 
@@ -391,7 +391,9 @@ func (p *Parser) parseCallExpressionRest(pos int, expression *ast.Expression) *a
 
 左辺式を読み終えると、後ろに何が来ても `parseCallExpressionRest` を呼び、その中のループは最初に `parseMemberExpressionRest` をもう一度走らせます。直前に走らせ終えたばかりなので、`(` も `?.` も来ていなければ、何も積まずに戻ってくるだけの1周です。tsc 6.0.3 も同じ形でした。
 
-これを `if` 1つで飛ばしたのが [#23063](https://github.com/oxc-project/oxc/pull/23063) (perf(parser): skip parse_call_expression_rest when no call follows、2026年6月) です。PR の本文 (Claude に確認してもらったもの) によると、oxc ももとはこの形をそのまま写していて、式の中の `a` や `1` のような葉の1つ1つがこの空回りを払っていました。`parse_member_expression_rest` はプロファイルで1番のホットスポットで、近道を入れると、式が密な2.5 MB のファイルで1回のパースが約22.6ミリ秒から約19.7ミリ秒になり、約13%速くなったそうです。AST とスパンとトークンの出力は、変更前とバイト単位で同じだったそうです。本文には、ts-go も JS 版 tsc も同じ形で、同じ重複を持ったまま最適化していない、とも書いてありました。
+これを `if` 1つで飛ばしたのが [#23063](https://github.com/oxc-project/oxc/pull/23063) (perf(parser): skip parse_call_expression_rest when no call follows、2026年6月) です。PR の本文 (Claude に確認してもらったもの) によると、oxc ももとはこの形をそのまま写していて、式の中の `a` や `1` のような葉の1つ1つがこの空回りを払っていました。本文には、ts-go も JS 版 tsc も同じ形で、同じ重複を持ったまま最適化していない、とも書いてあります。
+
+効果も PR に載っています。`parse_member_expression_rest` はプロファイルで1番のホットスポットで、近道を入れると、式が密な2.5 MB のファイルで1回のパースが約22.6ミリ秒から約19.7ミリ秒になり、約13%速くなったそうです。AST とスパンとトークンの出力は、変更前とバイト単位で同じだったそうです。
 
 ### 近道の前提を debug_assert で書く
 
