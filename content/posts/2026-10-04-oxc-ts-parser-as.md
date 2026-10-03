@@ -20,7 +20,7 @@ crates/oxc_parser/src/cursor.rs             638行   セミコロンの自動挿
 crates/oxc_parser/src/js/declaration.rs     241行   変数宣言の終わり
 ```
 
-oxc の結果は、次の「下準備」の手順で手元でも同じものが出せます。TypeScript 本体 (tsc 5.9.3 / 6.0.3 / 7.0.2 と、7.1 の開発版) を動かした結果、Go 版の tsc のソース、issue と PR の経緯は、Claude に確認してもらったものです。
+oxc の結果は、次の「下準備」の手順で手元でも同じものが出せます。TypeScript 本体 (tsc 5.9.3 / 6.0.3 / 7.0.2 と、7.1 の開発版) を動かした結果、Go 版の tsc のソース、issue と PR の経緯、事前知識の節の TypeScript 側の説明は、Claude に確認してもらったものです。
 
 ## 下準備: oxc に式を流す
 
@@ -118,7 +118,7 @@ console.log(1 + 1 as number / 2);
 
 tsc はこれを `console.log((1 + 1) / 2);` と出力します。値は1です。ところが `as number` を空白に置き換えると `1 + 1           / 2` になり、JavaScript としては `1 + (1 / 2)`、値は1.5です。それなのに `erasableSyntaxOnly` を付けた tsc 6.0.3 がエラーを出さない、という報告でした。
 
-もとは qnighy さんが ts-blank-space に報告した問題 ([bloomberg/ts-blank-space#62](https://github.com/bloomberg/ts-blank-space/issues/62)) で、issue の本文には、先にエラーを出すよう直したものとして ts-blank-space、SWC、Amaro (Node.js が使う型の除去) が挙がっています。
+もとは qnighy さんが ts-blank-space に報告した問題 ([bloomberg/ts-blank-space#62](https://github.com/bloomberg/ts-blank-space/issues/62)) で、issue の本文には、先にエラーを出すよう直したものとして ts-blank-space、SWC、Amaro (Node.js の TypeScript 対応に使われているパッケージ) が挙がっています。
 
 Claude に tsc 5.9.3 と 6.0.3 で試してもらうと、どちらも `erasableSyntaxOnly` を付けてもエラーは出ず、出力は `(1 + 1) / 2` でした。
 
@@ -304,9 +304,9 @@ Ryan Cavanaugh さんのまとめには、さっきの1行のあとにこう続�
 
 > See if we can get away with parsing this as `1 + 1 as (number / 2)` to get a type expression parsing error, or apply the same logic that `??` has with certain binary operands, e.g. `1 || 2 ?? 3` is an error so maybe `1 + 1 as T` can be an error? Worth running top1000 on with Strada and seeing if we can just take a break here in 7.0. It'd have to be an error instead of just a pure precedence change since we don't want to change runtime behavior emit
 
-案は2つ挙がっています。`1 + 1 as (number / 2)` と読んで型のパースエラーにする案と、`1 || 2 ?? 3` を括弧なしで書くとエラーになるのと同じように、混ぜ方そのものをエラーにする案です。Strada は JS 版の tsc の呼び名で、人気リポジトリの上位1000個で試して、7.0 で壊してしまえるか確かめよう、とも書いてあります。
+案は2つ挙がっています。`1 + 1 as (number / 2)` と読んで型のパースエラーにする案と、`1 || 2 ?? 3` を括弧なしで書くとエラーになるのと同じように、混ぜ方そのものをエラーにする案です。続けて、人気リポジトリの上位1000個に対して Strada で試し、7.0 で壊してしまえるか確かめよう、とも書いてあります。これは JS 版の tsc の呼び名で、Go 版の tsc の [`CHANGES.md`](https://github.com/microsoft/TypeScript/blob/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc/CHANGES.md#L1) でも、JS 版を Strada、Go 版を Corsa と呼んでいます。
 
-最後の文が方針の中心です。ランタイムの動作 (出力される JavaScript) を変えたくないので、優先順位を変えるのではなく、エラーにしなければならない。優先順位を変えると、今まで `(1 + 1) / 2` の意味だったコードが、黙って `1 + 1 / 2` の意味に変わってしまいます。エラーにすれば、書き手が括弧を付けて意味を選び直すまで、出力は生まれません。
+引用の最後の文が、方針の中心です。ランタイムの動作 (出力される JavaScript) を変えたくないので、優先順位を変えるのではなく、エラーにしなければならない。優先順位を変えると、今まで `(1 + 1) / 2` の意味だったコードが、黙って `1 + 1 / 2` の意味に変わってしまいます。エラーにすれば、書き手が括弧を付けて意味を選び直すまで、出力は生まれません。
 
 翌日、Anders Hejlsberg さんが[コメント](https://github.com/microsoft/TypeScript/issues/63527#issuecomment-4615276410)で規則を言葉にしました。冒頭と最後の段落を引きます (間の例と説明は省いています)。
 
@@ -316,7 +316,7 @@ Ryan Cavanaugh さんのまとめには、さっきの1行のあとにこう続�
 
 訳すと、`as T` のあとに意味のある形で続けられるのは、関係演算子と同じか弱い演算子だけだ。それより強い演算子が続いたら、そこでパースを止める。現実のコードで壊れるものがあったらとても驚く、と。
 
-その PR が [microsoft/typescript-go#4192](https://github.com/microsoft/typescript-go/pull/4192)「Stop parsing constructs that make it impossible to erase `as`/`satisfies`」で、Go 版の tsc (typescript-go) に入りました。PR の中では人気リポジトリでの試験も起動されましたが、その実行環境が無効になっていてエラーで終わっています。それでもそのままマージされました。
+その PR が [microsoft/typescript-go#4192](https://github.com/microsoft/typescript-go/pull/4192)「Stop parsing constructs that make it impossible to erase `as`/`satisfies`」で、Go 版の tsc (typescript-go) に入りました。
 
 実際の判定は、Anders さんの言葉より少し緩く作られています。比べる相手は `as` 自身の強さではなく、`as` の手前で左辺を作った演算子の強さです。だから `1 * 1 as number + 2` は、`+` が関係演算子より強くても通ります。`as` を消したときに意味が変わるかどうか、だけを見ているわけです。
 
@@ -329,8 +329,6 @@ Go 版は、2026年6月18日に npm に出た `typescript@7.0.1-rc` から `type
 | 7.0.2 | `error TS1005: ',' expected.` で、`/` の位置を指している |
 
 7.0 では、オプションに関係なく構文エラーです。`erasableSyntaxOnly` を使う人だけの話ではなくなり、6.0 まで通っていたコードが7.0 では通らない。これが、7.0 で意図的に入った breaking change です。
-
-なお typescript-go のリポジトリは今はアーカイブされていて、Go 版のソースは microsoft/TypeScript の `tsc/` の下に移っています。
 
 ## oxc は翌日に追いかけた
 
@@ -352,7 +350,7 @@ Go 版のマージから oxc のマージまで、約16時間です。変更は1
 
 足されたのは、さっき読んだコードの2か所と、もう1か所です。
 
-1つ目は、ループの前の変数の宣言です。`last_operand_precedence` は「いまの左辺を作った二項演算子の優先順位」で、最初は `None` です。宣言のコメントには、二項演算子・論理演算子をまだ1つも食べていない間は `None` で、TypeScript でも最初のオペランドは単項式のパースから来るので二項式にはならない、と書いてあります。
+1つ目は、さっきの抜粋にあったループの前の宣言で、`last_operand_precedence` は「いまの左辺を作った二項演算子の優先順位」を覚えておく変数です。最初は `None` です。
 
 2つ目は、普通の二項演算子の腕の最後にある代入 `last_operand_precedence = Some(left_precedence);` (`js/expression.rs:1441`) です。左辺を `BinaryExpression` か `LogicalExpression` で包み直すたびに、その演算子の強さを覚えます。`as` の腕はこの変数を書き換えません。
 
@@ -376,9 +374,9 @@ Go 版のマージから oxc のマージまで、約16時間です。変更は1
 
 Go 版の tsc は、変数に優先順位ではなく左辺のノードそのもの (`lastOperand`) を覚えておき、それが二項式なら演算子の優先順位を、そうでなければ一番強い値 (`OperatorPrecedenceHighest`) を比べる相手にしています (Claude に確認してもらいました)。一番強い値と比べれば何も止まらないので、oxc の `None` と同じ働きです。
 
-## エラーを出すコードは、どこにも無い
+## エラーは、セミコロンの自動挿入が出す
 
-では、`break` したあとどこでエラーになるのか。足された17行の中には、エラーを出すコードがありません。`break` すると、`/ 2` を読まないまま `(1 + 1) as number` が返るだけです。PR の本文にも、強い演算子を宙に浮かせて、パースエラーとして表に出す、と書いてあります。
+では、`break` したあとどこでエラーになるのか。足された17行は `break` するだけで、エラーは出しません。`break` すると、`/ 2` を読まないまま `(1 + 1) as number` が返るだけです。PR の本文にも、強い演算子を宙に浮かせて、パースエラーとして表に出す、と書いてあります。
 
 式を読み終えて文の側に戻ると、文の終わりを確かめる `asi` (`cursor.rs:143`) が呼ばれます。式の文なら `parse_expression_statement` (`js/statement.rs:309`)、`const` の宣言なら `parse_variable_declaration` (`js/declaration.rs:79`) が呼び出し元です。
 
@@ -465,7 +463,7 @@ oxc のほうは、`as` の腕の判定が `next_precedence > last_precedence` �
 - `as` と `satisfies` は、`<` と同じ比較の段の、弱い演算子として表に載っている
 - `as` の右辺は式ではなく型なので、後ろに強い演算子が来ても右辺に取り込めない。その演算子は外側のループが拾い、`as` で包んだ左辺全体にかかる
 - そのせいで、型を空白で消すと意味が変わる式が書けた。TypeScript チームは優先順位を変えず、7.0 でこの形を構文エラーにすると決めた。出力される JavaScript の意味を黙って変えないためで、6.0 まで通っていたコードが通らなくなるのは承知の上だった
-- oxc は Go 版の PR を約16時間後に移植した。判定は `as` の腕の最後の `if` 1つで、エラーを出すコードは無い。`break` で残った演算子が、セミコロンの自動挿入でエラーになる
+- oxc は Go 版の PR を約16時間後に移植した。判定は `as` の腕の最後の `if` 1つで、専用のエラーは出さない。`break` で残った演算子が、セミコロンの自動挿入でエラーになる
 - `**` を挟むケースは、Go 版では8月に塞がれたが、この rev の oxc ではまだ通る
 
 次回は「そのエラー、誰が出してるの?」です。同じ間違いでも、エラーを出すのがパーサーなのか、セマンティック解析なのか、型チェッカーなのかで、oxc と tsc の住み分けが違います。
