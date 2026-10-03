@@ -290,7 +290,7 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 
 さっきの話は、ノード1個の形をどう決めるかでした。もう少し木らしい例として、非 null アサーションの後置 `!` と `?.` の組み合わせを見ます。ここもパースの手順ではなく、出来上がった木の形だけの話です。
 
-入力は `a?.b!` と `a?.b!.c` の2つに絞ります。
+使う入力は `a?.b!` と `a?.b!.c` の2つです。
 
 ### oxc と TSESTree は同じ形
 
@@ -335,6 +335,33 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 ```
 
 外側から `ChainExpression`、`TSNonNullExpression`、`MemberExpression` の順に入れ子になっています。`?.` は、`MemberExpression` の `"optional": true` で表されています。
+
+#### 補足: `ChainExpression` と `"optional": true` の役割
+
+この補足は、Claude に調べてもらった内容です (実行結果、仕様の該当箇所と引用を含みます)。
+
+`?.` を表すのに、なぜノードが2つ出てくるのか。`?.` の動きを見ると分かります。Node.js で実行した結果です。
+
+```js
+const a = undefined;
+
+a?.b.c; // undefined
+(a?.b).c; // TypeError: Cannot read properties of undefined (reading 'c')
+```
+
+`a?.b.c` は、`a` が `undefined` だと分かった時点で、そのあとの `.b` も `.c` も評価せずに、式全体が `undefined` になります (short-circuiting)。一方 `(a?.b).c` は、括弧の中の `a?.b` が `undefined` になったあと、括弧の外の `.c` は普通に評価されるので、`undefined` のプロパティを読もうとしてエラーになります。
+
+つまり `?.` には、「どこで値を確かめるか」と「値が無かったら、どこまでまとめて飛ばすか」の2つの情報があります。
+
+ECMAScript の仕様では、これが文法に表れています。[13.3.9 Optional Chains](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-optional-chains) の `OptionalChain` は、`?. IdentifierName` で始まり、後ろに `. IdentifierName` や `[ Expression ]`、`Arguments` を続けられる形で定義されています。`a?.b.c` の `?.b.c` は、全体で1つの `OptionalChain` です。そして評価の手順 (13.3.9.1) には、`?.` の手前の値が `undefined` か `null` なら、`OptionalChain` を評価せずに `undefined` を返す、と書かれています。括弧で囲った `(a?.b)` はそこで1つの式として閉じるので、後ろの `.c` はチェーンに入りません。
+
+ESTree は、この2つの情報を別々のノードに持たせています。[仕様 (es2020.md)](https://github.com/estree/estree/blob/master/es2020.md#chainexpression) の `ChainExpression` の説明にはこうあります。
+
+> If the `callee|object` property is evaluated to nullish and the `optional` property is `true`, then the node and ancestor nodes are skipped until the closest `ChainExpression` node, and the result of the `ChainExpression` node becomes `undefined`.
+
+`"optional": true` が付いたノードで、手前の値 (`object` や `callee`) が null か undefined だったら、そこから一番近い `ChainExpression` までの祖先をまとめて飛ばし、`ChainExpression` の結果を `undefined` にする、という意味です。`"optional": true` が「どこで確かめるか」、`ChainExpression` が「どこまで飛ばすか」にあたります。同じ仕様には、[`obj?.aaa.bbb`](https://github.com/estree/estree/blob/875bf70440a8870c4a663865a7a41300cf1add55/es2020.md?plain=1#L89-L103) と [`(obj?.aaa).bbb`](https://github.com/estree/estree/blob/875bf70440a8870c4a663865a7a41300cf1add55/es2020.md?plain=1#L158-L172) の木を並べた例も載っています。
+
+これで上の木も読めます。`a?.b!` では、`TSNonNullExpression` が `ChainExpression` の内側にあるので、`!` もチェーンの一部として、飛ばす範囲に入っています。
 
 TSESTree の出力も同じ形でした。違いは、位置 (`start` と `end`) と識別子の `"typeAnnotation": null` を、oxc は出して TSESTree は出さない (後者はキーごと無い) という2点だけです。ノードの種類と入れ子は一致していて、`a?.b!.c` でも同じでした。
 
