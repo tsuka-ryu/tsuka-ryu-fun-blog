@@ -120,7 +120,33 @@ AST の型を定義しているクレート `oxc_ast` の冒頭、`crates/oxc_as
 
 真ん中の TSESTree は、自前のパーサーを持っていません。tsc を呼んで AST を作らせて、それを ESTree 形式に変換します。ESLint のエコシステムは ESTree の上に乗っているので、そのままでは食べられないからです。
 
-右端が今回の主役です。oxc は TSESTree のような変換役ではなく、自前の再帰下降パーサーで最初から AST を組み立てます。それでいて、出てくる木の形は真ん中の出力に合わせてある。つまり TypeScript AST と同じ形を作ってから直すのではなく、作る時点で違う形にしている。
+Claude に 8.26.1 の中身を確認してもらうと、`dist/parser.js` の `parse()` の本体はこの2段でした。
+
+```text
+/**
+ * Create a ts.SourceFile directly, no ts.Program is needed for a simple parse
+ */
+const ast = (0, createSourceFile_1.createSourceFile)(parseSettings);
+/**
+ * Convert the TypeScript AST to an ESTree-compatible one
+ */
+const { astMaps, estree } = (0, ast_converter_1.astConverter)(ast, parseSettings, shouldPreserveNodeMaps);
+```
+
+1段目の `createSourceFile` は、ソースを文字列で渡したときは中で `ts.createSourceFile` を呼んで、TypeScript AST を作ります。2段目の `astConverter` が、それを TSESTree の形に組み替える段です。組み替えの本体の `dist/convert.js` には、`case SyntaxKind.LiteralType:` のように、TypeScript AST のノードの種類ごとに「TSESTree ではこのノードにする」という分岐が並んでいます。あとで見る null の扱いも、この分岐の1つです。
+
+もう1つ大事なのは、`astConverter` が変換後の木 (`estree`) と一緒に `astMaps` を返していることです。中身は `esTreeNodeToTSNodeMap` と `tsNodeToESTreeNodeMap` の2つで、2つの木のノードを互いに対応づける表です。つまり変換したあとも、元の TypeScript AST は捨てていません。
+
+この対応表が効いてくるのが型情報です。ESLint のルールが読むのは TSESTree の木ですが、「この変数の型は何か」が知りたくなったら、対応表で TypeScript AST のノードに戻って、tsc の型チェッカーに聞けます。ルールに渡す型の取り出し口 (`dist/createParserServices.js`) は、こうなっていました。
+
+```js
+getSymbolAtLocation: node => checker.getSymbolAtLocation(astMaps.esTreeNodeToTSNodeMap.get(node)),
+getTypeAtLocation: node => checker.getTypeAtLocation(astMaps.esTreeNodeToTSNodeMap.get(node)),
+```
+
+受け取った TSESTree のノード (`node`) を `esTreeNodeToTSNodeMap` で TypeScript AST のノードに引き直して、tsc の `checker` に渡しています。typescript-eslint の、型情報を使うルールは、この取り出し口や対応表を通して tsc に型を聞いています。
+
+右端が今回の主役です。oxc は TSESTree のような変換役ではなく、自前の再帰下降パーサーで最初から AST を組み立てます。それでいて、出てくる木の形は真ん中の出力に合わせてある。つまり TypeScript AST と同じ形を作ってから直すのではなく、作る時点で違う形にしている。変換の段を持たないので、TSESTree のように対応表を通って tsc の型情報に戻る、という道もありません。
 
 その「作る時点で違う」が一番はっきり出るのが、次の1行です。
 
