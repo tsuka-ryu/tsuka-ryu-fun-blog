@@ -20,7 +20,7 @@ crates/oxc_parser/src/ts/types.rs        1,690行   null型を読む腕
 crates/oxc_parser/src/js/expression.rs   1,799行   後置の ! とチェーンの組み立て
 ```
 
-比較のために、TSESTree 8.26.1 も走らせています。oxc とこちらの結果は、次の「下準備」の手順で手元でも同じものが出せます。TypeScript 本体 (tsc 3.9.10 / 4.0.8 / 5.7.3 / 5.9.3 / 6.0.3 と、Go 版の開発版) の結果は、Claude に確認してもらったものです。AST のダンプは、oxc は `cargo run -q -p oxc_parser --example parser -- x.ts --estree`、tsc は `ts.createSourceFile`、typescript-estree は `parse()` で採りました。
+比較のために、TSESTree 8.26.1 も走らせています。oxc とこちらの結果は、次の「下準備」の手順で手元でも同じものが出せます。TypeScript 本体 (tsc 3.9.10 / 4.0.8 / 5.9.3 / 6.0.3 と、Go 版の開発版) の結果は、Claude に確認してもらったものです。AST のダンプは、oxc は `cargo run -q -p oxc_parser --example parser -- x.ts --estree`、tsc は `ts.createSourceFile`、TSESTree は `parse()` で採りました。
 
 ## 下準備: oxc と TSESTree の AST を手元で出す
 
@@ -37,95 +37,40 @@ npm init -y
 npm install @typescript-eslint/typescript-estree@8.26.1
 ```
 
-作業用の `repro` の中に、次の3つのファイルを置きます。1つ目は、ESTree 形式の式を、この記事で使う略記 (`Chain(NonNull(Member?(a, b)))` のような形) に直す関数です。
-
-```js
-// shape.cjs
-// ESTree 形式の式を、記事の略記 (Chain / NonNull / Member? など) に直す
-function shape(n) {
-  switch (n.type) {
-    case "ChainExpression":
-      return `Chain(${shape(n.expression)})`;
-    case "TSNonNullExpression":
-      return `NonNull(${shape(n.expression)})`;
-    case "ParenthesizedExpression":
-      return `Paren(${shape(n.expression)})`;
-    case "MemberExpression": {
-      const prop = n.computed ? `[${n.property.raw}]` : n.property.name;
-      return `Member${n.optional ? "?" : ""}(${shape(n.object)}, ${prop})`;
-    }
-    case "CallExpression":
-      return `Call${n.optional ? "?" : ""}(${shape(n.callee)})`;
-    case "Identifier":
-      return n.name;
-    default:
-      return n.type;
-  }
-}
-module.exports = { shape };
-```
-
-2つ目は、TSESTree で型と式をパースして、型注釈の種類と式の形を出すスクリプトです。
+作業用の `repro` の中に、TSESTree でパースした結果をそのまま JSON で出すスクリプトを置きます。
 
 ```js
 // estree.cjs
 const { parse } = require("@typescript-eslint/typescript-estree");
-const { shape } = require("./shape.cjs");
 
-const types = ["type A = null;", "type C = true;", "type F = `abc`;"];
-for (const src of types) {
-  const t = parse(src).body[0].typeAnnotation;
-  console.log(src.padEnd(18), t.type, t.literal ? `> ${t.literal.type}` : "");
-}
-
-const exprs = [
-  "a!",
+const sources = [
+  "type A = null;",
+  "type C = true;",
+  "type F = `abc`;",
   "a?.b!",
   "a?.b!.c",
-  "a?.b.c!",
-  "a!.b?.c",
-  "a?.[0]!",
-  "a?.()!",
-  "a?.b!(x)",
   "(a?.b)!.c",
 ];
-for (const src of exprs) {
-  console.log(src.padEnd(12), shape(parse(src).body[0].expression));
+for (const src of sources) {
+  console.log(`===== ${src}`);
+  console.log(JSON.stringify(parse(src).body[0], null, 2));
 }
 ```
 
-3つ目は、oxc の `parser` サンプルの出力から JSON を取り出して、同じ形で出すスクリプトです。
-
-```js
-// oxc.cjs
-// oxc の parser example の出力 (標準入力) から JSON を取り出し、式の形を略記で出す
-const { shape } = require("./shape.cjs");
-const out = require("fs").readFileSync(0, "utf8");
-const ast = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
-const stmt = ast.body[0];
-if (stmt.typeAnnotation) {
-  const t = stmt.typeAnnotation;
-  console.log(t.type, t.literal ? `> ${t.literal.type}` : "");
-} else {
-  console.log(shape(stmt.expression));
-}
-```
-
-TSESTree 側は、そのまま実行します。
+TSESTree 側は、これを実行します。
 
 ```bash
 node estree.cjs
 ```
 
-oxc 側は、入力を1つずつファイルに書いて `parser` サンプルに `--estree` を付けて流し、その出力を `oxc.cjs` に渡します。
+oxc 側は、入力を1つずつファイルに書いて、`parser` サンプルに `--estree` を付けて流します。
 
 ```bash
 cd ../oxc
-for src in 'type A = null;' 'type C = true;' 'type F = `abc`;' \
-           'a!' 'a?.b!' 'a?.b!.c' 'a?.b.c!' 'a!.b?.c' 'a?.[0]!' 'a?.()!' 'a?.b!(x)' '(a?.b)!.c'; do
+for src in 'type A = null;' 'type C = true;' 'type F = `abc`;' 'a?.b!' 'a?.b!.c' '(a?.b)!.c'; do
   printf '%s\n' "$src" > /tmp/x.ts
-  printf '%-18s ' "$src"
-  cargo run -q -p oxc_parser --example parser -- /tmp/x.ts --estree | node ../repro/oxc.cjs
+  echo "===== $src"
+  cargo run -q -p oxc_parser --example parser -- /tmp/x.ts --estree
 done
 ```
 
@@ -164,7 +109,7 @@ AST の型を定義しているクレート `oxc_ast` の冒頭、`crates/oxc_as
                               │
       ┌───────────────────────┼───────────────────────────┐
       ▼                       ▼                           ▼
-     TypeScript AST        TSESTree                       oxc
+     tsc                  TSESTree                       oxc
   公式の実装            変換レイヤー                  Rust製の再実装
   パーサー +            tscのASTを受け取って           自前の手書きパーサー
   チェッカー            ESTree形式に組み替える          型の解決はしない
@@ -187,21 +132,63 @@ AST の型を定義しているクレート `oxc_ast` の冒頭、`crates/oxc_as
 type A = null;
 ```
 
-これを oxc のパーサーに `--estree` を付けて流すと JSON が出てきます。ノードの種類だけ抜き出して木にすると、型注釈の部分はこうです。
+これを oxc のパーサーに `--estree` を付けて流した出力から、`Program` の外枠だけを外したものがこちらです。
 
-```
-TSTypeAliasDeclaration
-  id: Identifier "A"
-  typeAnnotation: TSNullKeyword
+```json
+{
+  "type": "TSTypeAliasDeclaration",
+  "id": {
+    "type": "Identifier",
+    "decorators": [],
+    "name": "A",
+    "optional": false,
+    "typeAnnotation": null,
+    "start": 5,
+    "end": 6
+  },
+  "typeParameters": null,
+  "typeAnnotation": {
+    "type": "TSNullKeyword",
+    "start": 9,
+    "end": 13
+  },
+  "declare": false,
+  "start": 0,
+  "end": 14
+}
 ```
 
-キーワードのノードが1個あるだけです。ところが同じ書き方で `type C = true;` を流すと、こう変わります。
+型注釈の `typeAnnotation` には、`TSNullKeyword` のノードが1個あるだけです。ところが同じ書き方で `type C = true;` を流すと、こう変わります。
 
-```
-TSTypeAliasDeclaration
-  id: Identifier "C"
-  typeAnnotation: TSLiteralType
-    literal: Literal (true)
+```json
+{
+  "type": "TSTypeAliasDeclaration",
+  "id": {
+    "type": "Identifier",
+    "decorators": [],
+    "name": "C",
+    "optional": false,
+    "typeAnnotation": null,
+    "start": 5,
+    "end": 6
+  },
+  "typeParameters": null,
+  "typeAnnotation": {
+    "type": "TSLiteralType",
+    "literal": {
+      "type": "Literal",
+      "value": true,
+      "raw": "true",
+      "start": 9,
+      "end": 13
+    },
+    "start": 9,
+    "end": 13
+  },
+  "declare": false,
+  "start": 0,
+  "end": 14
+}
 ```
 
 真偽値のほうは `TSLiteralType` という箱に入って、その中にリテラルが入る。JavaScript の文法では `null` も `true` も同じ `Literal` の仲間 ([ECMAScript 2025 の 13.2.3 Literals](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-primary-expression-literals)) なのに、片方だけ箱がありません。
@@ -303,63 +290,87 @@ null がリテラル型の仲間に並んでいます。移植のときも、こ
 
 さっきの話は、ノード1個の形をどう決めるかでした。もう少し木らしい例として、非 null アサーションの後置 `!` と `?.` の組み合わせを見ます。ここもパースの手順ではなく、出来上がった木の形だけの話です。
 
-11通りの入力を3者に食わせて、できた木の形を並べました。TypeScript AST の列は、Claude に tsc 6.0.3 で確認してもらったものです。表にすると縦に長いので、木の略記で並べます。`Chain` は `ChainExpression`、`NonNull` は `TSNonNullExpression`、`Member?` と `Call?` は optional なメンバーアクセスと呼び出し、`[chain]` は TypeScript AST のノードに `NodeFlags.OptionalChain` が立っていることを表します。
+入力は `a?.b!` と `a?.b!.c` の2つに絞ります。
+
+### oxc と TSESTree は同じ形
+
+まず oxc です。`a?.b!` を `--estree` で流した出力から、`Program` と `ExpressionStatement` の外枠だけを外したものがこちらです。
+
+```json
+{
+  "type": "ChainExpression",
+  "expression": {
+    "type": "TSNonNullExpression",
+    "expression": {
+      "type": "MemberExpression",
+      "object": {
+        "type": "Identifier",
+        "decorators": [],
+        "name": "a",
+        "optional": false,
+        "typeAnnotation": null,
+        "start": 0,
+        "end": 1
+      },
+      "property": {
+        "type": "Identifier",
+        "decorators": [],
+        "name": "b",
+        "optional": false,
+        "typeAnnotation": null,
+        "start": 3,
+        "end": 4
+      },
+      "optional": true,
+      "computed": false,
+      "start": 0,
+      "end": 4
+    },
+    "start": 0,
+    "end": 5
+  },
+  "start": 0,
+  "end": 5
+}
+```
+
+外側から `ChainExpression`、`TSNonNullExpression`、`MemberExpression` の順に入れ子になっています。`?.` は、`MemberExpression` の `"optional": true` で表されています。
+
+TSESTree の出力も同じ形でした。違いは、位置 (`start` と `end`) と識別子の `"typeAnnotation": null` を、oxc は出して TSESTree は出さない (後者はキーごと無い) という2点だけです。ノードの種類と入れ子は一致していて、`a?.b!.c` でも同じでした。
+
+ひとつだけ見た目が割れるのは、`(a?.b)!.c` のように括弧を付けたときです。oxc だけ、括弧が `ParenthesizedExpression` というノードとして残ります。とはいえ、これは差というより設定の話でした。パーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。ESTree の仕様に括弧のノードは無いので、切れば消えます。
+
+### TypeScript AST には ChainExpression が無い
+
+ここは Claude に tsc 6.0.3 で確認してもらった結果です。
+
+TypeScript AST は、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。`SyntaxKind` の中から Chain を含む名前を探すと0件でした。代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
+
+TypeScript AST のノードは親を指していて循環するので、JSON のようにはそのまま出せません。そこで `ts.createSourceFile` で作った木を `ts.forEachChild` でたどり、ノードの種類 (`ts.SyntaxKind` の名前)、識別子の名前、`OptionalChain` が立っているかだけを出してもらいました。`a?.b!` はこうなります。
 
 ```
-a!
-  oxc・TSESTree   NonNull(a)
-  TypeScript AST  NonNull(a)
-
-a?.b!
-  oxc・TSESTree   Chain(NonNull(Member?(a, b)))
-  TypeScript AST  NonNull(Prop?[chain](a, b))
-
-a?.b!.c
-  oxc・TSESTree   Chain(Member(NonNull(Member?(a, b)), c))
-  TypeScript AST  Prop[chain](NonNull[chain](Prop?[chain](a, b)), c)
-
-a?.b.c!
-  oxc・TSESTree   Chain(NonNull(Member(Member?(a, b), c)))
-  TypeScript AST  NonNull(Prop[chain](Prop?[chain](a, b), c))
-
-a!.b?.c
-  oxc・TSESTree   Chain(Member?(Member(NonNull(a), b), c))
-  TypeScript AST  Prop?[chain](Prop(NonNull(a), b), c)
-
-a?.[0]!
-  oxc・TSESTree   Chain(NonNull(Member?(a, [0])))
-  TypeScript AST  NonNull(Elem?[chain](a, 0))
-
-a?.()!
-  oxc・TSESTree   Chain(NonNull(Call?(a)))
-  TypeScript AST  NonNull(Call?[chain](a))
-
-a?.b!(x)
-  oxc・TSESTree   Chain(Call(NonNull(Member?(a, b))))
-  TypeScript AST  Call[chain](NonNull[chain](Prop?[chain](a, b)))
+NonNullExpression
+  PropertyAccessExpression  flags: OptionalChain
+    Identifier "a"
+    QuestionDotToken
+    Identifier "b"
 ```
 
-読み取れることが2つあります。
+一番外側の `NonNullExpression` にはフラグが立っていません。`!` はチェーンの外側にいる、という扱いです。oxc と TSESTree では、一番外側が `ChainExpression` で、`TSNonNullExpression` はその内側でした。入れ子の順番が逆になっています。
 
-ひとつめ。oxc と TSESTree は、ここに並べた8つすべてで木が一致しました。入力はあと3つあって、改行を挟んだ `a` と `!b` は両方とも「2つの文」として同じ扱いになり、拡張子を `.js` にしたものはそちらを走らせていないので比較対象外。残る1つが括弧つきの `(a?.b)!.c` で、ここだけ見た目が割れます。
-
-とはいえ、これは差というより設定の話でした。oxc のパーサーには `preserve_parens` というオプションがあって、ドキュメントコメント自身が非標準だと断ったうえで既定値をオンにしています。オンのあいだは括弧が `ParenthesizedExpression` というノードとして残る。ESTree の仕様に括弧のノードは無いので、切れば消えます。つまり実質は全一致です。
-
-ふたつめ。TypeScript AST だけ、作りがまるごと違います。そもそも `ChainExpression` に当たるノードを持っていません。Claude に 5.7.3 の `SyntaxKind` から Chain を含む名前を探してもらうと0件で、代わりに `NodeFlags.OptionalChain` (値は64) というビットがあり、チェーンに属するノードそれぞれに立ちます。
-
-面白いのは `!` の位置でフラグの付き方が変わるところです。`a?.b!.c` を Claude に tsc 6.0.3 でダンプしてもらうと、こうなりました。
+入力が `a?.b!.c` だと、こうなります。
 
 ```
-PropertyAccessExpression [chain]
-  NonNullExpression [chain]
-    PropertyAccessExpression [chain]
-      Identifier
+PropertyAccessExpression  flags: OptionalChain
+  NonNullExpression  flags: OptionalChain
+    PropertyAccessExpression  flags: OptionalChain
+      Identifier "a"
       QuestionDotToken
-      Identifier
-  Identifier
+      Identifier "b"
+  Identifier "c"
 ```
 
-3つとも立っています。ところが `a?.b!` のほうは、外側の `NonNullExpression` にフラグが立ちません。`!` がチェーンの途中ならチェーンの一部、末尾ならチェーンの外側、という扱いです。oxc と TSESTree はそこを区別せず、`?.` を含む式の全体を `Chain` で包んで、`NonNull` はいつもその内側に入れます。
+今度は3つとも立っています。`!` がチェーンの途中にあれば、チェーンの一部になる。TypeScript AST は `!` の位置でそこを区別しますが、oxc と TSESTree は区別せず、`?.` を含む式の全体を `ChainExpression` で包んで、`TSNonNullExpression` はいつもその内側に入れます。
 
 ### 橋渡しをしている腕
 
@@ -392,7 +403,7 @@ fn map_to_chain_expression(&self, span: Span, expr: Expression<'a>) -> Expressio
 }
 ```
 
-メンバーアクセスと呼び出しが並んでいるのは、ECMAScript のオプショナルチェーンとして当然です。3つめの腕だけが TS 固有で、しかもこれが無いと `a?.b!` の `NonNull` が `Chain` の外に出てしまいます。TypeScript AST と同じ形になってしまう、と言ってもいい。
+メンバーアクセスと呼び出しが並んでいるのは、ECMAScript のオプショナルチェーンとして当然です。3つめの腕だけが TS 固有で、しかもこれが無いと `a?.b!` の `TSNonNullExpression` が `ChainExpression` の外に出てしまいます。TypeScript AST と同じ形になってしまう、と言ってもいい。
 
 後置の記号を読む腕より、この腕のほうが「誰に合わせているのか」をよく語っている気がします。パースそのものには要らない腕だからです。
 
@@ -406,14 +417,48 @@ fn map_to_chain_expression(&self, span: Span, expr: Expression<'a>) -> Expressio
 type F = `abc`;
 ```
 
-埋め込みが無いので、これはただの文字列リテラル型です。oxc の出力はこうなります。
+埋め込みが無いので、これはただの文字列リテラル型です。oxc の出力 (`Program` の外枠を外したもの) はこうなります。
 
-```
-TSTypeAliasDeclaration
-  typeAnnotation: TSLiteralType
-    literal: TemplateLiteral
-      quasis: [ TemplateElement "abc" ]
-      expressions: []
+```json
+{
+  "type": "TSTypeAliasDeclaration",
+  "id": {
+    "type": "Identifier",
+    "decorators": [],
+    "name": "F",
+    "optional": false,
+    "typeAnnotation": null,
+    "start": 5,
+    "end": 6
+  },
+  "typeParameters": null,
+  "typeAnnotation": {
+    "type": "TSLiteralType",
+    "literal": {
+      "type": "TemplateLiteral",
+      "quasis": [
+        {
+          "type": "TemplateElement",
+          "value": {
+            "raw": "abc",
+            "cooked": "abc"
+          },
+          "tail": true,
+          "start": 9,
+          "end": 14
+        }
+      ],
+      "expressions": [],
+      "start": 9,
+      "end": 14
+    },
+    "start": 9,
+    "end": 14
+  },
+  "declare": false,
+  "start": 0,
+  "end": 15
+}
 ```
 
 型のノードの中に、式のノードが直接入っています。しかもこの `TemplateLiteral` は、JavaScript のコードに出てくるテンプレートリテラルと同じ型です。
