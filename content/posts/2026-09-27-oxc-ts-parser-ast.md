@@ -3,7 +3,6 @@ title: oxcのTypeScriptパーサーを読む 第4回 そのASTは誰に合わせ
 description: oxcが吐くASTの形は誰の仕様に合わせているのか。TypeScript AST / TSESTree / oxc の3者の関係を、null型と後置の!の木の形で見ます。
 date: 2026-09-27
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
-draft: true
 ---
 
 この記事では、oxc が吐く AST の形が誰の仕様に合わせて作られているのかを確かめます。題材は `null` 型と後置の `!` で、oxc の木を、TypeScript AST (tsc の内部で使われている AST) と TSESTree (`@typescript-eslint/typescript-estree`) の木に並べて比べます。
