@@ -1124,3 +1124,18 @@ oxc の TypeScript パーサー連載を書いている途中、レビュー済�
   `pnpm run dev` 起動中は `curl -H "Accept: text/html" .../draft-記事のslug` が 200 を返すことを確認した。
 - **却下した代替**: 記事を別ブランチに分けて出す案。連載記事同士が前回・次回を参照し合っており、
   レビュー中に全体の整合性を見たいので、1 ブランチにまとめて draft で隠す方が扱いやすい。
+
+### 2026-10-18 — Void + Cloudflare への作り直し計画を策定
+
+FUNSTACK Static（静的生成 + Vercel）から、Void（Cloudflare Workers）へ全面的に作り直す方針を決めた。
+動機は、ブラウザの管理画面から記事を書く（その場でプレビュー）ことと、記事を DB に持ちつつ
+Markdown でも配信すること。方針・決定事項・フェーズ・受け入れ条件は
+[`docs/void-cloudflare-rebuild.md`](./void-cloudflare-rebuild.md) にまとめた。
+
+- **決めたこと**: 記事の正は D1、公開側は D1 を読まず R2 のスナップショットを配信（D1 の従量課金を
+  管理画面だけに閉じ込める）。Markdown パーサーはネイティブ依存（ox-content）を捨てて TypeScript で自作。
+  認証は Void 組み込みの Better Auth + GitHub OAuth。
+- **却下した代替**: remark 系パーサー（方針として自作）、Cloudflare Access（ローカルで認証が効かない）、
+  Git を正にする運用（ブラウザ管理画面と合わない）、公開側でも D1 を読む構成（コストが読めない）。
+- **進め方**: 統合ブランチを trunk に `gh stack` でフェーズごとの PR を積む。着手前に現行サイトで
+  VRT（Vitest browser mode）のベースラインを撮る。
