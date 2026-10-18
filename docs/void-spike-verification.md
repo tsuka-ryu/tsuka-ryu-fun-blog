@@ -19,6 +19,15 @@ Spike は「捨てる前提の小さな実験」のことで、本番のコー�
 node -v   # v24.21.0 以上であること
 ```
 
+24.21.0 未満なら、Spike のディレクトリだけ Node を切り替える（A1 で作ったあとに実行する）。
+`mise use` はそのディレクトリに `mise.toml` を作るだけで、このリポジトリの Node（24.16.0）には影響しない。
+
+```sh
+cd void-spike
+mise use node@24.22.0
+node -v   # v24.22.0
+```
+
 ## パート A: ローカルで確認する
 
 ### A1. プロジェクトを作る
@@ -29,6 +38,8 @@ node -v   # v24.21.0 以上であること
 mkdir void-spike && cd void-spike
 mkdir -p pages routes/api db
 ```
+
+すでに空のディレクトリを用意している場合は、その中に入って `mkdir -p pages routes/api db` だけ実行する。
 
 次のファイルを作る。
 
@@ -278,7 +289,7 @@ pnpm exec vite --port 5199
 curl -s localhost:5199/api/hello
 
 # 2. Pages mode の SSR（HTML の中に <h1> が描画されている）
-curl -s -H 'Accept: text/html' localhost:5199/ | grep -o '<h1[^>]*>[^<]*'
+curl -s -H 'Accept: text/html' localhost:5199/ | grep -o '<h1.*</h1>'
 
 # 3. D1 への書き込みと読み取り
 curl -s localhost:5199/api/d1
@@ -302,7 +313,7 @@ curl -s -X POST -w ' %{http_code}\n' localhost:5199/api/isr
 | #   | 期待する結果                                                                                        | 何を確認しているか                 |
 | --- | --------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 1   | `{"message":"Hello from Void"}`                                                                     | API ルート（`routes/`）            |
-| 2   | `<h1>spike ` で始まる行                                                                             | Pages mode の SSR                  |
+| 2   | `<h1>spike <!-- -->2026-…</h1>`（`{now}` の前に React が `<!-- -->` を挟む）                       | Pages mode の SSR                  |
 | 3   | `{"count":1,"first":{"id":1,"slug":"s-…","title":"hello","createdAt":"…"}}`（呼ぶたびに行が増える） | D1 への書き込みと読み取り          |
 | 4   | `{"body":{"ok":true}}`                                                                              | R2 への書き込みと読み取り          |
 | 5   | `Unauthorized 401`                                                                                  | 保護ルート（`requireAuth`）        |
@@ -358,6 +369,182 @@ curl -s -X POST -w '\n%{http_code}\n' localhost:5199/api/auth/sign-in/email \
   -d '{"email":"me@example.com","password":"example-password-123"}'
 # → 200 と、token・user を含む JSON
 ```
+
+### A5b. セッションを D1 ではなく Durable Object に置く（任意）
+
+既定ではセッションは D1 の `session` テーブルに入る。Better Auth の `secondaryStorage` に Durable Object をつなぐと、
+そこに置ける。Void のドキュメントには記述がなく、Better Auth 側のオプション（`defineAuth` で足せる）を使う形。
+
+`SecondaryStorage` は `get`・`set`・`delete` に加えて、`getAndDelete`（読んで消す）と `increment`（加算）が必須。
+この 2 つは原子的であることが前提で、Workers KV にはその操作がない（KV 版は末尾の「KV で試した場合」を参照）。
+Durable Object は同じ名前への呼び出しが 1 つずつ順に実行されるので、原子的に書ける。
+
+キー 1 つにつき Durable Object 1 つ（名前がキー）にする。キーごとに別のオブジェクトなので、全リクエストが 1 か所に
+集中しない。`durable-objects/session-store.ts` を作る。
+
+```ts
+import { defineDurableState } from "void/durable";
+
+type Entry = { value: string | null; expiresAt: number | null };
+
+function isExpired(entry: Entry) {
+  return entry.expiresAt !== null && entry.expiresAt <= Date.now();
+}
+
+export const SessionStore = defineDurableState({
+  initialState: { value: null, expiresAt: null } as Entry,
+  methods: {
+    get(context) {
+      if (isExpired(context.state)) {
+        context.state.value = null;
+        context.state.expiresAt = null;
+      }
+      return context.state.value;
+    },
+    async set(context, value: string, ttl?: number) {
+      context.state.value = value;
+      context.state.expiresAt = ttl ? Date.now() + ttl * 1000 : null;
+      if (context.state.expiresAt !== null) await context.setAlarm(context.state.expiresAt);
+    },
+    async delete(context) {
+      context.state.value = null;
+      context.state.expiresAt = null;
+      await context.deleteAlarm();
+    },
+    async getAndDelete(context) {
+      const value = isExpired(context.state) ? null : context.state.value;
+      context.state.value = null;
+      context.state.expiresAt = null;
+      await context.deleteAlarm();
+      return value;
+    },
+    async increment(context, ttl: number) {
+      // 期限切れなら 0 から数え直す。TTL は最初の加算のときだけ付け、あとの加算では延ばさない。
+      if (isExpired(context.state)) {
+        context.state.value = null;
+        context.state.expiresAt = null;
+      }
+      const next = Number(context.state.value ?? 0) + 1;
+      context.state.value = String(next);
+      if (next === 1) {
+        context.state.expiresAt = Date.now() + ttl * 1000;
+        await context.setAlarm(context.state.expiresAt);
+      }
+      return next;
+    },
+  },
+  async alarm(context) {
+    if (isExpired(context.state)) {
+      context.state.value = null;
+      context.state.expiresAt = null;
+    }
+  },
+});
+
+export default SessionStore;
+```
+
+A5 で作った `auth.ts` を、サインアップを閉じる設定ごと次のように置き換える。サインアップを閉じたあとは新しいユーザーを
+作れないので、**サインアップは閉じる前に済ませておく**（A5 の前半）。
+
+```ts
+import { defineAuth } from "void/auth";
+
+// このファイルは起動時に素の Node からも読み込まれる。Durable Object のモジュールは
+// `cloudflare:workers` を import していて Node では読めないので、先頭で import せず、
+// メソッドが呼ばれたときに動的に読み込む。
+async function store(key: string) {
+  const { SessionStore } = await import("./durable-objects/session-store.ts");
+  return SessionStore.get(key);
+}
+
+export default defineAuth(({ defaults }) => ({
+  ...defaults,
+  emailAndPassword: { enabled: true, disableSignUp: true },
+  secondaryStorage: {
+    get: async (key) => (await store(key)).get(),
+    set: async (key, value, ttl) => {
+      await (await store(key)).set(value, ttl);
+    },
+    delete: async (key) => {
+      await (await store(key)).delete();
+    },
+    getAndDelete: async (key) => (await store(key)).getAndDelete(),
+    increment: async (key, ttl) => (await store(key)).increment(ttl),
+  },
+}));
+```
+
+`auth.ts` は起動時に、Vite を通さず素の Node の `import()` で読み込まれる。そのため次の 2 点に注意する。
+
+- import には拡張子 `.ts` が要る（省略すると `ERR_MODULE_NOT_FOUND` で dev サーバーが起動しない）。
+- Durable Object のモジュールを先頭で import してはいけない。その先の `void/durable` が `cloudflare:workers` を import
+  していて、Node は読めない（`ERR_UNSUPPORTED_ESM_URL_SCHEME`）。上のように、メソッドの中で動的に import する。
+  KV 版が先頭の import で動いたのは、`void/kv` が Cloudflare 専用のモジュールを読まないため。
+
+`tsconfig.json` の `include` に `"durable-objects"` を足す。Durable Object を新しく使うので、dev サーバーを再起動する。
+`void.lock.json` に Durable Object のバインディングとマイグレーションが自動で書かれる（コミットする）。
+
+> 古いセッション（D1 や KV にあるもの）は引き継がれない。切り替えたあとは、サインインし直す。
+> サインアップが済んでいない状態で失敗したときも、ユーザーだけ D1 に作られていることがある。
+> やり直しはサインアップではなく、サインイン（`/api/auth/sign-in/email`）を使う。
+> `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL` と言われるのは、そのため。
+
+確認すること（Durable Object 版。ローカルで確認済みの項目に ✓）:
+
+- ✓ サインインして、セッション付きで `/api/private` が通る。`{"email":"me@example.com"} 200`
+- ✓ D1 の `session` テーブルが 0 件のまま（`user` は 1 件）。
+- ✓ セッションが Durable Object に入っている。`.void/v3/do/void-spike-SessionStoreDurableObject/` の下に、キーごとの SQLite ファイルができる。
+- ✓ `void.lock.json` に `SESSION_STORE` のバインディングとマイグレーションが自動で追加される（コミットする）。
+- ✓ サインアウトのあと、同じ Cookie で `/api/private` が 401 になる。
+
+```sh
+curl -s -b cookies.txt -c cookies.txt -X POST localhost:5199/api/auth/sign-out \
+  -H 'content-type: application/json' -H 'origin: http://localhost:5199' -d '{}'
+# → {"success":true}
+curl -s -b cookies.txt -w ' %{http_code}\n' localhost:5199/api/private
+# → Unauthorized 401
+```
+
+本番での確認は未実施（パート B）。KV 版では結果整合でずれる可能性があったが、Durable Object は同じ名前が常に同じ
+1 か所で処理されるので、サインアウト直後の 401 がずれない想定。
+
+#### 原子的な加算の比較実験（任意）
+
+KV と Durable Object で、同じカウンターを並行に加算して違いを見る。`durable-objects/counter.ts`（`defineDurableState` で
+`increment` / `read`）と `routes/api/counter.ts`（`mode=kv` / `mode=do` で切り替え。KV 版は「読む → 1 足す → 書く」）を作る。
+
+```sh
+seq 50 | xargs -P 10 -I{} curl -s -X POST 'localhost:5199/api/counter?mode=kv&name=t1' > /dev/null
+curl -s 'localhost:5199/api/counter?mode=kv&name=t1'   # → 9（41 回分が取りこぼし）
+
+seq 50 | xargs -P 10 -I{} curl -s -X POST 'localhost:5199/api/counter?mode=do&name=t1' > /dev/null
+curl -s 'localhost:5199/api/counter?mode=do&name=t1'   # → 50
+```
+
+`name` を変えると 0 から数え直せる。KV を使うルートがあれば `void/kv` は検出されるが、`auth.ts` だけで使う場合は
+後述のとおり設定が要る。
+
+#### KV で試した場合（参考）
+
+`secondaryStorage` に `void/kv` をつなぐこともできる。ただし `getAndDelete` と `increment` は読み書きを分けた近似になり、
+並行に叩かれると取りこぼす（上の実験のとおり）。レート制限のカウンターは `increment` に依存するので、
+`rateLimit: { storage: "memory" }` で KV から外す。実装は Git の履歴（void-spike の `13b9a44`）にある。
+
+`auth.ts` はプロジェクト直下にあり、Void が `void/kv` などの使用を探す走査の対象外（走査するのは `routes`・`middleware`・
+`queues`・`pages`・`crons`・`email`・`durable-objects`・`src`）。そのままだと `Missing Cloudflare binding 'KV'` になる。
+`void.config.ts` で KV を明示する。
+
+```ts
+export default defineConfig({
+  worker: { compatibility_date: "2026-02-24" },
+  inference: { bindings: { kv: true } },
+});
+```
+
+KV 版で確認できたこと: サインインでセッションが KV に入り（`.void/v3/kv/local/blobs/`）、D1 の `session` は 0 件のまま、
+`/api/private` が通る。Cookie `better-auth.session_token` の値は `トークン.署名` の形で、先頭がサインインのレスポンスの
+`token` と一致する。未確認: 本番の KV は結果整合なので、サインアウト直後の 401 がずれるか（パート B で確認する）。
 
 ### A6. つまずいたときの表
 
