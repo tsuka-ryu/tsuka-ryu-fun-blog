@@ -312,6 +312,7 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 | OG 画像              | 公開時に WASM 版 Takumi で生成して R2 に保存                                                                                      | 最大のリスク                              |
 | Void のバージョン    | 固定せず最新に追従。VRT・型チェック・lint を CI で回し続ける                                                                      | 決定事項                                  |
 | VRT                  | Vitest browser mode + `toMatchScreenshot`。移行前のベースラインを先に撮る                                                         | ビジュアルリグレッションテスト            |
+| VRT に含めないもの   | ホバー中の見た目とアニメーションは撮らない（不要と決定。`vrt/README.md`）                                                         | ビジュアルリグレッションテスト            |
 | ブランチ             | trunk + `gh stack` でフェーズを積む。docs と Phase 0・1 は `main` へ直接                                                          | ブランチ戦略                              |
 | Issue                | 使わない。進捗はこのドキュメントのチェックボックスで追う                                                                          | —                                         |
 
