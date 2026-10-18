@@ -150,6 +150,29 @@ Void のドキュメントには記述がない。Better Auth には `secondaryS
 `getAndDelete` の用途は未確認（一度きりのトークン用と思われる）。管理者が自分 1 人で同時リクエストがほぼ重ならない。
 厳密にやるなら、操作が直列化される Cloudflare の Durable Objects（Void の `docs/guide/durable-state.md`、未読）や D1 を使う。
 
+### サインアップを閉じる確認で、どのコードが動いているか
+
+`/api/auth/*` は、Void が Better Auth のハンドラーをつないだルートで、自分で書いた `routes/` のファイルではない。
+どちらのリクエストも `workerd`（本番の Workers と同じ種類のランタイム）の中で動く。
+
+サインアップが拒否されるとき（`sign-up/email`）:
+
+1. `auth.ts` の `disableSignUp: true` が読まれる。
+2. Better Auth の `sign-up.mjs` が `emailAndPassword.disableSignUp` を見て、`EMAIL_PASSWORD_SIGN_UP_DISABLED`（400）を返して終わる。
+3. D1 にも Durable Object にも触らない。ユーザーは作られない。
+
+サインインが通るとき（`sign-in/email`、`sign-in.mjs` の `signInEmail`）:
+
+1. `findUserByEmail` が、メールアドレスで D1 の `user` と `account` を引く。
+2. `account` のパスワードのハッシュと、送ったパスワードを照合する（照合のコードは未読）。
+3. `createSession` がセッションを作る。`auth.ts` の `secondaryStorage.set` が呼ばれ、Durable Object（`SessionStore`）に書く。
+   D1 の `session` テーブルには書かない。
+4. `setSessionCookie` が `Set-Cookie` を付ける。レスポンスに `token` と `user` が入る。
+
+自分で書いたコードで動いたのは `auth.ts`（設定と `secondaryStorage` の 5 つのメソッド）と
+`durable-objects/session-store.ts`（セッションの保存先）。ユーザー検索、パスワード照合、Cookie の組み立ては
+Better Auth のコード（`node_modules/better-auth/dist/api/routes/`）。
+
 ### 実験: KV と Durable Object で並行に加算するとどうなるか
 
 同じカウンターを 50 回、10 並列で加算した（ローカルの dev サーバー）。
