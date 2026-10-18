@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["node", "react", "react-dom"],
+    "types": ["node", "react", "react-dom", "vitest/browser"],
     "moduleDetection": "force",
 
     "strict": true,
@@ -23,5 +23,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vrt"]
 }
