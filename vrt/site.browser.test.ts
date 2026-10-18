@@ -41,6 +41,12 @@ function snapshotName(pathname: string, viewport: string): string {
   return `${slug}-${viewport}`;
 }
 
+// 1 枚の画像にする最大の高さ。Chromium は 16384px を超える画像を安定して描画できないので、
+// これより高いページは、この高さごとに分けて撮る。
+const MAX_CAPTURE_HEIGHT = 12_000;
+
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+
 async function loadInFrame(pathname: string, width: number, height: number) {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = `display:block;border:0;width:${width}px;height:${height}px`;
@@ -77,12 +83,33 @@ async function loadInFrame(pathname: string, width: number, height: number) {
     ),
   );
   await new Promise((resolve) => setTimeout(resolve, 800));
-
-  // ページ全体が収まる高さにする。
-  iframe.style.height = `${doc.documentElement.scrollHeight}px`;
-  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-  iframe.style.height = `${doc.documentElement.scrollHeight}px`;
   return iframe;
+}
+
+// ブラウザの縦幅（viewport）をページの高さに合わせる。iframe の要素を撮る方式では、
+// 最初の画面（viewport）より下は描画されず、画像の下半分が真っ白になる。
+// サイトのレイアウトは `min-height: 100vh` を使うので、縦幅を変えたあとの高さを測り直す。
+async function fitViewportToContent(
+  iframe: HTMLIFrameElement,
+  width: number,
+  fallbackHeight: number,
+): Promise<{ captureHeight: number; contentHeight: number }> {
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error("iframe の中身を読めません");
+  let contentHeight = doc.documentElement.scrollHeight;
+  let captureHeight = Math.min(Math.max(contentHeight, fallbackHeight), MAX_CAPTURE_HEIGHT);
+  // 縦幅を変えると高さが変わりうるので、安定するまで（最大 3 回）測り直す。
+  for (let i = 0; i < 3; i++) {
+    await page.viewport(width, captureHeight);
+    iframe.style.height = `${captureHeight}px`;
+    await nextFrame();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    contentHeight = doc.documentElement.scrollHeight;
+    const next = Math.min(Math.max(contentHeight, fallbackHeight), MAX_CAPTURE_HEIGHT);
+    if (next === captureHeight) break;
+    captureHeight = next;
+  }
+  return { captureHeight, contentHeight };
 }
 
 for (const viewport of [DESKTOP, MOBILE]) {
@@ -92,9 +119,24 @@ for (const viewport of [DESKTOP, MOBILE]) {
       await page.viewport(viewport.width, viewport.height);
       const iframe = await loadInFrame(pathname, viewport.width, viewport.height);
       try {
-        await expect
-          .element(page.elementLocator(iframe))
-          .toMatchScreenshot(snapshotName(pathname, viewport.name));
+        const { captureHeight, contentHeight } = await fitViewportToContent(
+          iframe,
+          viewport.width,
+          viewport.height,
+        );
+        const chunks = Math.max(1, Math.ceil(contentHeight / captureHeight));
+        const baseName = snapshotName(pathname, viewport.name);
+        for (let i = 0; i < chunks; i++) {
+          // 最後の塊は、手前の塊と重なってもよいので、ページの終わりに合わせる。
+          iframe.contentWindow?.scrollTo(
+            0,
+            Math.min(i * captureHeight, contentHeight - captureHeight),
+          );
+          await nextFrame();
+          await expect
+            .element(page.elementLocator(iframe))
+            .toMatchScreenshot(chunks === 1 ? baseName : `${baseName}-${i + 1}of${chunks}`);
+        }
       } finally {
         iframe.remove();
       }
