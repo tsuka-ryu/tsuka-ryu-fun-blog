@@ -1,10 +1,7 @@
-import { Seo } from "#components/Seo.js";
-
-// 404 ページ。PostPage / TagPage が記事・タグ未存在時にも描画する。
-export function NotFoundPage() {
+// 404 の本文。存在しない URL（pages/[...path]）と、存在しない記事・タグ（pages/posts/[slug]、pages/tags/[slug]）で使う。
+export function NotFound() {
   return (
     <div className="page not-found-page">
-      <Seo title="ページが見つかりません" noindex />
       <h1>404</h1>
       <p>お探しのページは見つかりませんでした。</p>
       <a href="/" className="back-link">

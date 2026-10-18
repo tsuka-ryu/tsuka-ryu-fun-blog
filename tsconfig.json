@@ -1,11 +1,12 @@
 {
+  "extends": "./.void/tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["node", "react", "react-dom", "vitest/browser"],
+    "types": ["node", "react", "react-dom", "void/env"],
     "moduleDetection": "force",
 
     "strict": true,
@@ -23,5 +24,14 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts", "vrt"]
+  "include": [
+    "src",
+    "pages",
+    "routes",
+    "middleware",
+    "db",
+    "vite.config.ts",
+    "void.config.ts",
+    "vitest.config.ts"
+  ]
 }

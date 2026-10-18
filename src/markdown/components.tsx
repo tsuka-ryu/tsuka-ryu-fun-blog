@@ -1,4 +1,3 @@
-import { highlight } from "#markdown/highlight.js";
 import { createElement, type CSSProperties, type ReactNode } from "react";
 
 import type { MdastNode, NodeProps } from "#markdown/types.js";
@@ -156,9 +155,13 @@ function Blockquote({ node }: NodeProps<"blockquote">) {
 // async Server Component（highlight 参照）。シンタックスカラーは静的 HTML / RSC
 // ペイロードに焼き込まれ、ハイライターはクライアントに送られない。トークンは
 // React 要素として出力する（dangerouslySetInnerHTML は使わない）。
-async function CodeBlock({ node }: NodeProps<"code">) {
+// コードブロックのレンダラー。ハイライトは公開時に済ませて AST に埋めてあり（highlight.ts）、
+// ここは埋まったトークンを並べるだけの同期の処理にする。サーバーでもブラウザ（エディタのプレビュー）でも
+// 同じように動く。ハイライト済みでなければ（未対応の言語など）、色なしのコードとして描画する。
+function CodeBlock({ node }: NodeProps<"code">) {
   const lang = node.lang ?? undefined;
-  const { lines, rootStyle } = await highlight(node.value, lang);
+  const lines = node.highlight?.lines ?? node.value.split("\n").map((content) => [{ content }]);
+  const rootStyle = node.highlight?.rootStyle as CSSProperties | undefined;
 
   return (
     <pre className="shiki" style={rootStyle} data-lang={lang}>
@@ -166,7 +169,10 @@ async function CodeBlock({ node }: NodeProps<"code">) {
         {lines.map((line, i) => (
           <span key={i} className="line">
             {line.map((token, j) => (
-              <span key={j} style={token.htmlStyle as CSSProperties}>
+              <span
+                key={j}
+                style={"htmlStyle" in token ? (token.htmlStyle as CSSProperties) : undefined}
+              >
                 {token.content}
               </span>
             ))}
@@ -221,7 +227,7 @@ function Table({ node }: NodeProps<"table">) {
 }
 
 // 専用レンダラーを持たない（= 判別可能ユニオンに無い）ノード型のフォールバック。
-// 型上は到達しない（node: never）が、ox-content が想定外の type を吐いても
+// 型上は到達しない（node: never）が、パーサーが想定外の type を出しても
 // ビルドが壊れないよう実行時の保険として子・値を素描きする。ここだけは
 // 「型で表せない実行時データ」の境界として 1 つだけキャストを許容する
 // （消したかったディスパッチの相関キャストとは別物の、正直なキャスト）。

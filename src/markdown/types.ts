@@ -1,5 +1,5 @@
-// Markdown の AST（mdast）のノードの型定義。現行の ox-content と、自作パーサー（parse/）の
-// どちらの出力も、この形になる。レンダラーが使うフィールドだけを、type で判別できる判別可能ユニオンとして列挙する。
+// Markdown の AST（mdast）のノードの型定義。自作パーサー（parse/）の出力の形。
+// レンダラーが使うフィールドだけを、type で判別できる判別可能ユニオンとして列挙する。
 // 各ノードは自分の type に必要なフィールドだけを持つので、描画側で
 // node.type を switch すれば対応する variant に自動で絞り込まれる（キャスト不要）。
 /** ソース上の 1 点。line と column は 1 始まり、offset は先頭からの文字数（0 始まり）。 */
@@ -9,10 +9,17 @@ export interface Point {
   offset: number;
 }
 
-/** ノードがソースのどこにあたるか。自作パーサーだけが付ける（ox-content の出力にはない）。 */
+/** ノードがソースのどこにあたるか。自作パーサーが付ける。 */
 export interface Position {
   start: Point;
   end: Point;
+}
+
+/** シンタックスハイライト済みのコード。トークンごとの色は、ライト・ダークそれぞれの CSS 変数で持つ。 */
+export interface HighlightedCode {
+  lines: Array<Array<{ content: string; htmlStyle?: Record<string, string> }>>;
+  /** ルートの `<pre>` に付けるスタイル（背景色の CSS 変数）。 */
+  rootStyle?: Record<string, string>;
 }
 
 export type MdastNode = MdastVariant & { position?: Position };
@@ -32,7 +39,14 @@ type MdastVariant =
   | { type: "list"; ordered?: boolean; start?: number | null; children: MdastNode[] }
   | { type: "listItem"; checked?: boolean | null; children: MdastNode[] }
   | { type: "blockquote"; children: MdastNode[] }
-  | { type: "code"; value: string; lang?: string | null; meta?: string | null }
+  | {
+      type: "code";
+      value: string;
+      lang?: string | null;
+      meta?: string | null;
+      /** ハイライト済みの内容。公開時に埋める。なければ、色なしの素のコードとして描画する。 */
+      highlight?: HighlightedCode;
+    }
   | { type: "thematicBreak" }
   | { type: "break" }
   | {

@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792312773159,
+      "tag": "20261018083933_funny_blizzard",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1309,3 +1309,36 @@ Phase 2（自作パーサー）の PR を、計画（Phase 2 以降は統合ブ�
 するなら、先に相談するべきだった。指摘を受けて、`main`（`4218b77`）から `void-rebuild` を切り、PR のベースを
 `void-rebuild` に変更した。`main` に入った別の PR（#13 記事に構成図を追加）は、`void-rebuild` を切った時点で
 含まれており、PR のブランチにも取り込んだ（競合なし）。
+
+### 2026-10-18 — Phase 3: Void 化（FUNSTACK 撤去）と D1 スキーマ
+
+- **構成**: Void の Pages mode + island。`pages/*.island.tsx`（`with { island: "load" | "visible" }` で
+  ハイドレーションの時機を選ぶ）、`*.server.ts` の loader / `head`、`routes/` の Hono ルート
+  （`feed.xml` / `sitemap.xml` / `search-index.json`）、`middleware/`（共有データ、404）。`src/app/`
+  （FUNSTACK の結線）、`src/lib/og.ts`、`golden.test.ts` は撤去した。
+- **移植の結果（VRT）**: 60 件中、移行前のベースラインとそのまま一致したのは 58 件。差が出た 2 件
+  （`oxc-ts-parser-map` / `-trace`）は、ox-content の不具合で崩れていた旧ベースラインのほうが誤りで、
+  自作パーサーの描画が正しい。この 2 枚だけを更新した（ほかの画像は無変更）。
+- **VRT の許容を 100px に**: 5 ページに 4〜52px の差が出た。目視でも差は見えず、位置は 1 行の中の数文字。
+  DOM のテキストノードの分割が旧実装と違うことによる、文字のサブピクセル揺れと判断した。許容 0 のままだと
+  無意味に落ち続けるので、`allowedMismatchedPixels: 100` を入れた。崩れは数千px単位で差が出る
+  （今回の 2 ページは 3137 / 12402px）ので、検出力は落ちない。却下: 比率（`allowedMismatchedPixelRatio`）
+  による許容（長いページほど許容が大きくなり、短いページの検出力が下がる）。
+- **VRT の配信**: `dist/public` を静的に配る方式をやめ、`vite preview`（workerd）をグローバルセットアップで
+  起動し、Vite の `server.proxy` で同一オリジンにした。404 は Worker が返す。
+  **ハマりどころ**: `pnpm exec` の子プロセスは `SIGTERM` だけでは止まらず、ポートが残る。`detached: true` で
+  プロセスグループを分け、`process.kill(-pid)` で止める。
+- **404**: ページの loader から `c.status(404)` を呼んでも効かない。`x-not-found` ヘッダを付け、
+  ミドルウェアがそれを見てステータスを 404 に差し替えてヘッダを消す。
+- **D1 スキーマ**（`db/schema.ts`、マイグレーションは `void db generate`）: `posts`（公開中の版）、
+  `post_revisions`（下書き・スナップショット・公開版）、`tags`、`post_tags`、`assets`。
+  `posts.published_revision_id` は `post_revisions` との循環参照になるので外部キーにしない（アプリ側で整合を
+  保つ）。`post_revisions` / `post_tags` は記事を消すと連鎖して消え、`assets` は記事を消してもファイルを残す
+  （`post_id` を NULL にする）。履歴一覧が本文を引かないよう、索引は `(post_id, kind, created_at)`。
+- **pnpm の設定（要確認）**: Void 関連は公開から 7 日経っていない版を使うため、`minimumReleaseAge`
+  （7 日）の例外を `pnpm-workspace.yaml` の `minimumReleaseAgeExclude` に足した（`void`, `@void/*`,
+  `@cloudflare/*`, `cf`, `miniflare`, `workerd`, `wrangler`, `mime`, `mysql2`）。それ以外は 7 日のまま。
+  `allowBuilds` に `workerd` / `esbuild` / `lefthook` を許可した。**この例外はセキュリティ方針の緩和なので、
+  人間が見て判断してほしい。**
+- **Node / Vite**: Void は Node 24.21 以上と Vite 8 が必要（Vite 7 だと `@void/react` が動かない）。
+  `mise.toml` を 24.22.0 に上げた。

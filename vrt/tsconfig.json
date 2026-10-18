@@ -1,0 +1,19 @@
+{
+  // VRT のテストはブラウザの DOM を使う。Void の型（Cloudflare Workers の Response など）と
+  // DOM の型が衝突するので、本体の tsconfig とは分けて型チェックする。
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vitest/browser"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["./*.ts"]
+}

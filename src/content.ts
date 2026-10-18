@@ -1,12 +1,7 @@
-import { extractToc, slugify, type TocEntry } from "#lib/toc.js";
-import {
-  lintMarkdown,
-  parse,
-  prepareSource,
-  type JsMarkdownLintDiagnostic,
-  type JsMarkdownLintOptions,
-} from "@ox-content/napi";
-import { transliterate } from "transliteration";
+import { tagSlug } from "#lib/tag-slug.js";
+import { extractToc, type TocEntry } from "#lib/toc.js";
+import { attachHighlights } from "#markdown/highlight.js";
+import { parseDocument, type Diagnostic } from "#markdown/parse/index.js";
 
 import type { MdastNode } from "#markdown/types.js";
 
@@ -17,9 +12,9 @@ export interface PostFrontmatter {
   description?: string;
   tags?: string[];
   /**
-   * true の記事は本番ビルドでは丸ごと除外する（ルートも生成されず、一覧・タグ・
-   * RSS・検索・OGP のどこにも出てこない）。`pnpm run dev` のときだけ、レビュー用に
-   * 通常の記事と同じように見える。パース・lint 自体は除外前に必ず通す。
+   * true の記事は本番では丸ごと除外する（ルートも生成されず、一覧・タグ・RSS・検索・OGP のどこにも
+   * 出てこない）。`pnpm run dev` のときだけ、レビュー用に通常の記事と同じように見える。
+   * パース・検証は除外の前に必ず通す。
    */
   draft?: boolean;
 }
@@ -27,17 +22,24 @@ export interface PostFrontmatter {
 export interface Post {
   slug: string;
   frontmatter: PostFrontmatter;
-  /** パース済み mdast ツリー（ルートノード）。<Markdown> が React に描画する。 */
+  /** パース済みの AST（ルートノード）。<Markdown> が描画する。コードのハイライトは getPostWithHighlight で埋める。 */
   mdast: MdastNode;
   /** 本文から抽出した目次（h2〜h3）。 */
   toc: TocEntry[];
-  /** frontmatter を除いた本文 Markdown。RSS の全文（content:encoded）生成に使う。 */
+  /** frontmatter を除いた本文 Markdown。 */
   body: string;
 }
 
-// 全 Markdown ファイルをビルド時に生文字列として読み込む。これはサーバー
-// （ビルド）環境でのみ実行されるため、ネイティブの ox-content モジュールが
-// クライアントバンドルに混入することはない。
+export { tagSlug };
+
+/** 一覧に出す分だけ（本文の AST を含まない）。ページの props に載せる。 */
+export type PostSummary = Pick<Post, "slug" | "frontmatter">;
+
+export function summarize(post: Post): PostSummary {
+  return { slug: post.slug, frontmatter: post.frontmatter };
+}
+
+// 全 Markdown ファイルを、生の文字列として読み込む。
 const rawPosts = import.meta.glob<string>("../content/posts/*.md", {
   query: "?raw",
   import: "default",
@@ -48,151 +50,40 @@ function slugFromPath(path: string): string {
   return path.replace(/^.*\/(.+)\.md$/, "$1");
 }
 
-// link/image の URL に許可するスキーム・形。http(s) / mailto はそのまま、
-// 絶対パス(/) ・相対パス(./, ../) ・フラグメント(#) ・拡張子付きの素パスを許す。
-// javascript: や data: など、それ以外のスキームは危険として弾く。
-const SAFE_URL = /^(https?:|mailto:|tel:|\/|\.\.?\/|#|[\w./-]+$)/i;
-
-// mdast を走査して link/image の URL を検証する。危険な URL を含む記事は
-// ビルドを失敗させ、世に出さない（frontmatter / lint 検証と同じ思想）。
-// TODO: width/height 必須化。将来 image ノードへ width/height を注入するなら、この走査に
-// 相乗りさせる。型必須化を保留している経緯は src/markdown/components.tsx の Image 参照。
-function validateUrls(node: MdastNode, path: string): void {
-  if (node.type === "link" || node.type === "image") {
-    if (!SAFE_URL.test(node.url)) {
-      throw new Error(`[content] ${path}: 安全でない URL を検出しました（${node.url}）`);
-    }
-  }
-  if ("children" in node) {
-    for (const child of node.children) validateUrls(child, path);
-  }
-}
-
-/** frontmatter の date に要求する形式（YYYY-MM-DD）。 */
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-// 本文 Markdown の lint 設定。見出し構造や体裁の崩れを検出する。
-// これらのルールは warning として報告されるが、本ブログでは壊れた記事を
-// 出さない方針のため warning もビルド失敗扱いにする（下の lintPost 参照）。
-// spellcheck は日本語で誤検知が多いため無効。
-// maxConsecutiveBlankLines はデフォルト ON のため明示せず（u32 専用で false 不可）。
-// ただし後述の不具合により lintPost で非致命に降格する。
-const LINT_OPTIONS: JsMarkdownLintOptions = {
-  rules: {
-    duplicateHeadings: true,
-    headingIncrement: true,
-    repeatedPunctuation: true,
-    repeatedWords: true,
-    spellcheck: false,
-    trailingSpaces: true,
-  },
-};
-
-// 非致命に降格する lint ルール。max-consecutive-blank-lines はフェンス済み
-// コードブロック直後の単独空行を「連続空行」と誤判定する不具合があり、コードを
-// 含む記事が正しい Markdown でもビルド不能になる（最小再現: `## A` →
-// ```code``` → 空行 → `## B`）。warning 表示のみに留め、ビルドは止めない。
-// repeated-punctuation は英文引用に含まれる `??` や `!?` を誤字と判定するが、
-// 引用は原文のまま載せたいので書き換えようがない。同じく warning 表示のみにする。
-const NON_FATAL_RULES = new Set(["max-consecutive-blank-lines", "repeated-punctuation"]);
-
-function formatDiagnostics(diagnostics: JsMarkdownLintDiagnostic[]): string {
+function formatDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics
     .map((d) => `  [${d.severity}] ${d.ruleId} (${d.line}:${d.column}) ${d.message}`)
     .join("\n");
 }
 
-// 本文を lint し、error / warning があればビルドを失敗させる。ただし
-// NON_FATAL_RULES のルールと info は警告表示のみに留める。
-function lintPost(content: string, path: string): void {
-  const { diagnostics } = lintMarkdown(content, LINT_OPTIONS);
-  const fatal = diagnostics.filter(
-    (d) => (d.severity === "error" || d.severity === "warning") && !NON_FATAL_RULES.has(d.ruleId),
-  );
-  if (fatal.length > 0) {
-    throw new Error(`[content] ${path} の lint に失敗しました:\n${formatDiagnostics(fatal)}`);
-  }
-  const warnings = diagnostics.filter((d) => !fatal.includes(d));
-  if (warnings.length > 0) {
-    console.warn(`[content] ${path} の lint 警告:\n${formatDiagnostics(warnings)}`);
-  }
-}
-
-// frontmatter を検証して PostFrontmatter に確定する。必須項目の欠落や
-// date の表記揺れはビルドを失敗させ、壊れた記事が世に出ないようにする。
-function assertFrontmatter(fm: unknown, path: string): PostFrontmatter {
-  if (typeof fm !== "object" || fm === null) {
-    throw new Error(`[content] ${path}: frontmatter がありません`);
-  }
-  const { title, date, draft } = fm as Record<string, unknown>;
-  if (typeof title !== "string" || title.length === 0) {
-    throw new Error(`[content] ${path}: frontmatter.title が必要です`);
-  }
-  if (typeof date !== "string" || !DATE_PATTERN.test(date)) {
-    throw new Error(
-      `[content] ${path}: frontmatter.date は YYYY-MM-DD 形式で書いてください（実際: ${String(date)}）`,
-    );
-  }
-  if (draft !== undefined && typeof draft !== "boolean") {
-    throw new Error(
-      `[content] ${path}: frontmatter.draft は真偽値で書いてください（実際: ${JSON.stringify(draft)}）`,
-    );
-  }
-  return fm as PostFrontmatter;
-}
-
-// content.ts の中心。全記事をビルド時にパースして Post[] に変換し、
-// 新しい順に並べた配列を以降の取得関数へ供給する。
+// 全記事を、自作のパーサー（#markdown/parse）で解析して Post[] に変換し、新しい順に並べる。
+// 壊れた記事（error の診断がある）は、世に出さないようにここで失敗させる。warning は表示だけ。
 const posts: Post[] = Object.entries(rawPosts)
   .map(([path, raw]): Post => {
-    // YAML frontmatter を Rust 側で分離・パースし、残りの Markdown 本文を
-    // mdast ツリー（JSON）にパースする。
-    const prepared = prepareSource(raw, { frontmatter: true });
-    // frontmatter を除いた本文に対して lint をかける（行番号は本文基準）。
-    lintPost(prepared.content, path);
-    const parsed = parse(prepared.content, {
-      gfm: true,
-      tables: true,
-      taskLists: true,
-      strikethrough: true,
-      autolinks: true,
-    });
-
-    if (parsed.errors.length > 0) {
-      throw new Error(
-        `[content] ${path} のパースに失敗しました:\n${JSON.stringify(parsed.errors, null, 2)}`,
-      );
+    const { ast, frontmatter, body, diagnostics } = parseDocument(raw);
+    const errors = diagnostics.filter((d) => d.severity === "error");
+    if (errors.length > 0) {
+      throw new Error(`[content] ${path} の検証に失敗しました:\n${formatDiagnostics(errors)}`);
     }
-
-    const mdast = JSON.parse(parsed.ast) as MdastNode;
-    // link/image の URL を検証し、危険な URL の記事はビルドを止める。
-    validateUrls(mdast, path);
-    // 見出しノードにアンカー id を付与（mdast をその場で書き換え）し、TOC を返す。
-    const toc = extractToc(mdast);
-
+    const warnings = diagnostics.filter((d) => d.severity === "warning");
+    if (warnings.length > 0) {
+      console.warn(`[content] ${path} の警告:\n${formatDiagnostics(warnings)}`);
+    }
+    // 見出しノードにアンカー id を付与（ast をその場で書き換え）し、目次を返す。
+    const toc = extractToc(ast);
     return {
       slug: slugFromPath(path),
-      frontmatter: assertFrontmatter(prepared.frontmatter, path),
-      mdast,
+      frontmatter: frontmatter as unknown as PostFrontmatter,
+      mdast: ast,
       toc,
-      body: prepared.content,
+      body,
     };
   })
-  // draft は本番ビルドでは除外する。パース・lint は上の map() で全記事に対して
-  // 済んでいるので、公開前でも壊れた記事は検知できる。`pnpm run dev` のときだけ
-  // import.meta.env.DEV が true になり、draft も通常の記事と同じように見える。
+  // draft は本番では除外する。解析と検証は上の map() で全記事に対して済んでいるので、公開前でも壊れた記事は
+  // 検知できる。`pnpm run dev` のときだけ import.meta.env.DEV が true になり、draft も通常の記事と同じに見える。
   .filter((post) => !post.frontmatter.draft || import.meta.env.DEV)
   // 新しい順。
   .sort((a, b) => (a.frontmatter.date < b.frontmatter.date ? 1 : -1));
-
-export function getAllPosts(): Post[] {
-  // 内部配列の参照を渡すと呼び出し側の sort 等で破壊されるためコピーを返す。
-  return [...posts];
-}
-
-export function getPostBySlug(slug: string): Post | undefined {
-  return posts.find((post) => post.slug === slug);
-}
 
 /** 1 つのタグについて全記事を横断して集計した情報。 */
 export interface TagInfo {
@@ -204,15 +95,20 @@ export interface TagInfo {
   count: number;
 }
 
-/**
- * frontmatter のタグを URL スラッグに変換する。
- * transliterate で日本語を romaji 化してから slugify でクリーンアップし、
- * ASCII の URL セーフなスラッグにする（例「RSSフィード」→ rsshuido、
- * 「Next.js」→ nextjs）。見出しのアンカー（extractToc）は日本語を残す方針なので
- * slugify を直接使い、タグだけ transliterate を噛ませてここで分岐する。
- */
-export function tagSlug(tag: string): string {
-  return slugify(transliterate(tag));
+export function getAllPosts(): Post[] {
+  // 内部配列の参照を渡すと呼び出し側の sort 等で破壊されるためコピーを返す。
+  return [...posts];
+}
+
+export function getPostBySlug(slug: string): Post | undefined {
+  return posts.find((post) => post.slug === slug);
+}
+
+/** コードのハイライトを埋めた記事を返す（記事ページ用）。埋めるのは初回だけで、結果は使い回す。 */
+export async function getPostWithHighlight(slug: string): Promise<Post | undefined> {
+  const post = getPostBySlug(slug);
+  if (post) await attachHighlights(post.mdast);
+  return post;
 }
 
 // ビルド時に記事をタグスラッグでグループ化する。同じスラッグに畳まれる

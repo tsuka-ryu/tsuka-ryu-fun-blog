@@ -9,13 +9,13 @@
 
 最終更新: 2026-10-18
 
-| フェーズ                    | 状態                               | メモ                                                                                 |
-| --------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
-| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認    | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
-| 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）         | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
-| 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中） | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層      |
-| 3 土台（Void 導入）         | ⬜ 未着手                          | 次の着手候補。ここから本番に影響する。**統合ブランチ（trunk）を切ってから始める**    |
-| 4〜9                        | ⬜ 未着手                          | 「フェーズ」の節を参照                                                               |
+| フェーズ                    | 状態                                  | メモ                                                                                 |
+| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------ |
+| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認       | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
+| 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）            | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
+| 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中）    | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層      |
+| 3 土台（Void 導入）         | ✅ 完了（`phase-3-foundation` の PR） | Void 化・FUNSTACK 撤去・D1 スキーマ。VRT は 2 ページ以外すべて移行前のまま一致       |
+| 4〜9                        | ⬜ 未着手                             | 「フェーズ」の節を参照                                                               |
 
 **人間にしかできないこと**（Cloudflare アカウントが要る）:
 
@@ -189,7 +189,7 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 このリポジトリで作業するときに踏む、環境やルールの落とし穴。
 
-- **Node は 24 を使う。** `mise.toml` は 24.16.0 に固定している（Void を入れる Phase 3 で、Void の要件 24.21.0 以上に上げる）。**push 前のフックがビルドを走らせ、ビルドは `URLPattern` を使うので、Node 22 では `URLPattern is not defined` で失敗する。** Node 24 が入っていない環境では、`npm i node@24.16.0` などで別の場所に用意し、`PATH` の先頭に付けてから push する。フック（`--no-verify`）は飛ばさない
+- **Node は 24 を使う。** `mise.toml` は 24.22.0 に固定している（Void の要件 24.21.0 以上。Phase 3 で上げた）。**push 前のフックがビルドを走らせ、ビルドは `URLPattern` を使うので、Node 22 では `URLPattern is not defined` で失敗する。** Node 24 が入っていない環境では、`npm i node@24.22.0` などで別の場所に用意し、`PATH` の先頭に付けてから push する。フック（`--no-verify`）は飛ばさない
 - **push 前フック**（`lefthook.yml`）: `format:check` → `lint` → `typecheck` → `build` を順に実行する。`pnpm install` の `prepare` で `lefthook install` が走り、フックが有効になる
 - **マージはスカッシュのみ。** このリポジトリはリベースマージを許可していない（405）。`main` の履歴は直線で、マージコミットはない
 - **マージ済みのブランチは自動で削除される。** マージ後に同名のブランチで続けるときは、`main` から作り直して push する
@@ -254,12 +254,12 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 ### Phase 3: 土台（Void 導入・FUNSTACK 撤去）
 
-- [ ] Void 導入（`voidPlugin()` + `@void/react`）、`void.config.ts`、`pages/` / `routes/` の骨組み
-- [ ] D1 スキーマ（`posts` / `post_revisions` / `tags` / `post_tags` / `assets`）と索引、マイグレーション
-- [ ] `src/components` / `src/pages` / `src/markdown` / CSS を Pages mode に移植。FUNSTACK 依存と `src/app/entries.tsx` / `build.ts` を撤去
-- [ ] シンタックスハイライトを描画から切り離す（ADR 6）: `tokenize(code, lang)` を純粋な非同期関数にし、`CodeBlock` はトークン列を props で受け取る同期のコンポーネントにする。`shiki/core` + `createJavaScriptRegexEngine()` + 言語の動的 import に替え、`bundledLanguages` への依存をやめる。公開時にトークン化して AST に埋め、プレビューではブラウザでトークン化する
-- [ ] `src/content.ts` の ox-content（`prepareSource` / `parse` / `lintMarkdown`）を、自作パーサー（`parseDocument`）に置き換える。frontmatter・URL・lint の検証は、パーサーの診断（`error` があればビルドを止める）に一本化し、`content.ts` 側の `validateUrls` / `assertFrontmatter` / `NON_FATAL_RULES` は消す。**VRT で、見た目が変わるのが ox-content の不具合の 2 ページ（`2026-09-25-oxc-ts-parser-map`、`2026-09-26-oxc-ts-parser-trace`）だけであることを確認してから、ベースラインを更新する**
-- [ ] ox-content / takumi-js のネイティブ依存を `package.json` から外す（`golden.test.ts` も消す）（置き換えは Phase 2 / 6 で完了していること）
+- [x] Void 導入（`voidPlugin()` + `@void/react`）、`void.config.ts`、`pages/` / `routes/` の骨組み
+- [x] D1 スキーマ（`posts` / `post_revisions` / `tags` / `post_tags` / `assets`）と索引、マイグレーション
+- [x] `src/components` / `src/pages` / `src/markdown` / CSS を Pages mode に移植。FUNSTACK 依存と `src/app/entries.tsx` / `build.ts` を撤去
+- [x] シンタックスハイライトを描画から切り離す（ADR 6）: `tokenize(code, lang)` を純粋な非同期関数にし、`CodeBlock` はトークン列を props で受け取る同期のコンポーネントにする。`shiki/core` + `createJavaScriptRegexEngine()` + 言語の動的 import に替え、`bundledLanguages` への依存をやめる。公開時にトークン化して AST に埋め、プレビューではブラウザでトークン化する
+- [x] `src/content.ts` の ox-content（`prepareSource` / `parse` / `lintMarkdown`）を、自作パーサー（`parseDocument`）に置き換える。frontmatter・URL・lint の検証は、パーサーの診断（`error` があればビルドを止める）に一本化し、`content.ts` 側の `validateUrls` / `assertFrontmatter` / `NON_FATAL_RULES` は消す。**VRT で、見た目が変わるのが ox-content の不具合の 2 ページ（`2026-09-25-oxc-ts-parser-map`、`2026-09-26-oxc-ts-parser-trace`）だけであることを確認してから、ベースラインを更新する**
+- [x] ox-content / takumi-js のネイティブ依存を `package.json` から外す（`golden.test.ts` も消す）（置き換えは Phase 2 / 6 で完了していること）
 - **完了条件**: `void dev` でトップ・固定ページが表示される。typecheck / lint / format green
 
 ### Phase 4: 公開関数と公開側

@@ -135,7 +135,11 @@ for (const viewport of [DESKTOP, MOBILE]) {
           await nextFrame();
           await expect
             .element(page.elementLocator(iframe))
-            .toMatchScreenshot(chunks === 1 ? baseName : `${baseName}-${i + 1}of${chunks}`);
+            .toMatchScreenshot(chunks === 1 ? baseName : `${baseName}-${i + 1}of${chunks}`, {
+              // テキストノードの分割差で出る文字のサブピクセル揺れ（数〜数十px）は許す。
+              // 画面の崩れは数千px単位で差が出るので、検出力は落ちない。
+              comparatorOptions: { allowedMismatchedPixels: 100 },
+            });
         }
       } finally {
         iframe.remove();

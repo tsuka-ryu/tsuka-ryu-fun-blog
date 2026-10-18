@@ -2,7 +2,7 @@
   "name": "tsuka-ryu-funstack-blog",
   "version": "1.0.0",
   "private": true,
-  "description": "A static tech blog built with FUNSTACK Static, FUNSTACK Router, and ox-content.",
+  "description": "A tech blog on Void + Cloudflare (Workers, D1, R2).",
   "type": "module",
   "imports": {
     "#*": "./src/*"
@@ -13,7 +13,7 @@
     "preview": "vite preview --host",
     "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "void prepare && tsgo --noEmit && tsgo --noEmit -p vrt",
     "test": "vitest run",
     "test:browser": "vitest run --config vrt/vitest.parse.config.ts",
     "lint": "oxlint --type-aware",
@@ -25,29 +25,27 @@
   },
   "dependencies": {
     "@fontsource/zen-kaku-gothic-new": "^5.2.7",
-    "@funstack/router": "^1.1.1",
-    "@funstack/static": "^1.2.0",
-    "@ox-content/napi": "^2.70.0",
     "@paper-design/shaders-react": "0.0.76",
+    "@void/react": "1.1.11",
+    "hono": "^4.13.13",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "shiki": "^4.2.0",
     "temporal-polyfill-lite": "^0.4.0",
-    "transliteration": "^2.6.1"
+    "transliteration": "^2.6.1",
+    "void": "1.1.11"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "7.0.0-dev.20260612.1",
-    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser-playwright": "^5.0.3",
     "lefthook": "^2.1.9",
     "oxfmt": "^0.54.0",
     "oxlint": "^1.69.0",
     "oxlint-tsgolint": "^0.23.0",
     "playwright": "^1.64.0",
-    "takumi-js": "^1.8.3",
     "vite": "^8.0.16",
     "vitest": "^5.0.3"
   },

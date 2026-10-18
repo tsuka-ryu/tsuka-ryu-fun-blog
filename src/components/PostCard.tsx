@@ -1,11 +1,11 @@
 import { TagList } from "#components/TagList.js";
 import { formatDateDots } from "#lib/time.js";
 
-import type { Post } from "#content.js";
+import type { PostSummary } from "#content.js";
 
 // 記事のサマリーカード。ホームページとタグページで共有する。
 // 日付を本文の左マージンに逃がし、タイトル・説明・タグを 1 列にまとめる。
-export function PostCard({ post }: { post: Post }) {
+export function PostCard({ post }: { post: PostSummary }) {
   return (
     <article className="post-card">
       <time className="post-card-date" dateTime={post.frontmatter.date}>

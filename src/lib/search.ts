@@ -1,39 +1,12 @@
 import { getAllPosts } from "#content.js";
-import {
-  buildSearchIndex,
-  generateSearchModuleFromOptions,
-  type JsSearchDocument,
-  type JsSearchRuntimeOptions,
-} from "@ox-content/napi";
 
+import type { SearchDocument } from "#lib/search-query.js";
 import type { MdastNode } from "#markdown/types.js";
 
-// ビルド時の検索処理。記事を ox-content の検索ドキュメントへ変換してインデックスを
-// 構築し、ox-content が出力する純 JS のクライアントランタイムを生成する。どちらの
-// 成果物も build entry（src/app/build.ts）が出力ディレクトリへ書き出し、クライアントの
-// SearchBox が /search.js を読み込んで /search-index.json を検索する。ネイティブの
-// ox-content モジュールはブラウザに届かない。
-//
-// 仕組みの全体像（データフロー / ドキュメントのフィールド / 収集ルール）は
-// docs/search.md を参照。
+// クライアント検索の索引（/search-index.json）を作る。検索そのものは、ブラウザで動く
+// #lib/search-query.js。
 
-// クライアントランタイムがインデックスを取得するパス（静的ファイルとして配信）。
-const INDEX_PATH = "/search-index.json";
-
-const SEARCH_OPTIONS: JsSearchRuntimeOptions = {
-  enabled: true,
-  limit: 8,
-  prefix: true,
-  placeholder: "記事を検索...",
-  hotkey: "/",
-};
-
-// mdast ツリーから本文テキスト・見出しテキスト・コードを収集する。
-function collectContent(root: MdastNode): {
-  body: string;
-  headings: string[];
-  code: string[];
-} {
+function collectContent(root: MdastNode): { body: string; headings: string[]; code: string[] } {
   const bodyParts: string[] = [];
   const headings: string[] = [];
   const code: string[] = [];
@@ -50,7 +23,6 @@ function collectContent(root: MdastNode): {
       return;
     }
     if (node.type === "heading") {
-      // 見出しは headings に集約し、本文（body）には含めない（二重計上を避ける）。
       headings.push(textOf(node).trim());
       return;
     }
@@ -64,26 +36,20 @@ function collectContent(root: MdastNode): {
   return { body: bodyParts.join(" "), headings, code };
 }
 
-function searchDocuments(): JsSearchDocument[] {
-  return getAllPosts().map((post): JsSearchDocument => {
+export function buildSearchDocuments(): SearchDocument[] {
+  return getAllPosts().map((post): SearchDocument => {
     const { body, headings, code } = collectContent(post.mdast);
     return {
       id: post.slug,
       title: post.frontmatter.title,
       url: `/posts/${post.slug}`,
-      body,
       headings,
-      code,
+      body,
+      code: code.join("\n"),
     };
   });
 }
 
-// /search-index.json として配るシリアライズ済み検索インデックス（JSON 文字列）。
 export function buildSearchIndexJson(): string {
-  return buildSearchIndex(searchDocuments());
-}
-
-// /search.js として配る、ox-content 生成のクライアント検索ランタイム（ESM ソース）。
-export function buildSearchRuntimeJs(): string {
-  return generateSearchModuleFromOptions(SEARCH_OPTIONS, INDEX_PATH);
+  return JSON.stringify(buildSearchDocuments());
 }

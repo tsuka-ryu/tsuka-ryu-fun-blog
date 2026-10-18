@@ -1,4 +1,4 @@
-import { tagSlug } from "#content.js";
+import { tagSlug } from "#lib/tag-slug.js";
 
 // 記事のタグを `/tags/<slug>` へのピル状リンクとして並べる。タグが無ければ何も
 // 描画しない。ホーム・記事ページ・タグページから共有して使う。

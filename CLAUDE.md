@@ -30,7 +30,7 @@ FUNSTACK Static で作る静的技術ブログ。
 
 ## 環境
 
-- `mise.toml` で Node / pnpm を固定（node 24.16.0 / pnpm 11.6.0）。
+- `mise.toml` で Node / pnpm を固定（node 24.22.0 / pnpm 11.6.0）。
 - パッケージマネージャは pnpm。
 - push 前のフック（`lefthook.yml`）がビルドまで走らせる。ビルドは `URLPattern` を使うので、
   **Node 22 以下ではフックが落ちる。** Node 24 を `PATH` の先頭に付けて push する（フックは飛ばさない）。

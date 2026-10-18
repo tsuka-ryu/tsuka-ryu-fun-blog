@@ -84,7 +84,7 @@ export function splitFrontmatter(raw: string, sink: DiagnosticSink): SplitFrontm
   }
 
   const yamlEnd = contentStart + close.index;
-  // 本文は、frontmatter の直後の空行を除いたところから始める（現行の ox-content の prepareSource と同じ）。
+  // 本文は、frontmatter の直後の空行を除いたところから始める（RSS の全文などに使う body を、移行前（ox-content の prepareSource）と同じにするため）。
   const afterClose = contentStart + close.index + close[0].length;
   const bodyOffset =
     afterClose + (/^(?:[ \t]*\r?\n)+/.exec(raw.slice(afterClose))?.[0].length ?? 0);
