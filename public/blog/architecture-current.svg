@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640" role="img" aria-labelledby="t d">
+  <title id="t">現在の構成図</title>
+  <desc id="d">content/posts の Markdown を GitHub に push すると Vercel でビルドされ、静的ファイルが CDN から読者に配信される。実行時のサーバーはない。</desc>
+  <style>
+    svg { --ink:#1c1813; --soft:#837a6c; --line:#d9ceb8; --accent:#c2540c; --ink2:#46557a; --alt:#f2ebdb; --paper:#faf6ec;
+      font-family:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      svg { --ink:#ede6d8; --soft:#968c7b; --line:#3a3223; --accent:#e8833c; --ink2:#8fa0c8; --alt:#1f1a12; --paper:#14110c; }
+    }
+    .t { fill:var(--ink); font-size:14px; }
+    .s { fill:var(--soft); font-size:11.5px; }
+    .m { font-family:"JetBrains Mono",ui-monospace,Menlo,monospace; font-size:11px; fill:var(--soft); }
+    .lab { fill:var(--soft); font-size:12px; letter-spacing:.08em; }
+    .note { fill:var(--accent); font-size:13px; font-style:italic; }
+    .box { fill:var(--paper); stroke:var(--ink); stroke-width:1.4; }
+    .box.a { stroke:var(--accent); } .box.b { stroke:var(--ink2); }
+    .store { fill:var(--alt); stroke:var(--ink); stroke-width:1.4; }
+    .frame { fill:none; stroke:var(--line); stroke-width:1.4; stroke-dasharray:5 5; }
+    .arr { fill:none; stroke:var(--ink); stroke-width:1.4; marker-end:url(#h); }
+    .arr.a { stroke:var(--accent); marker-end:url(#ha); } .arr.b { stroke:var(--ink2); marker-end:url(#hb); }
+    .arr.x { stroke:var(--soft); stroke-dasharray:3 4; }
+    .brk { fill:none; stroke:var(--line); stroke-width:1.4; }
+    .star { fill:var(--accent); font-size:16px; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--ink)" stroke-width="1.6"/></marker>
+    <marker id="ha" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--accent)" stroke-width="1.6"/></marker>
+    <marker id="hb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="var(--ink2)" stroke-width="1.6"/></marker>
+  </defs>
+  <rect class="box " x="230" y="30" width="340" height="42" rx="7"/>
+  <text class="m" x="400.0" y="56.0" text-anchor="middle" style="fill:var(--ink);font-size:13px">content/posts/*.md</text>
+  <rect class="box " x="230" y="96" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="122.0" text-anchor="middle" >GitHub (main)</text>
+  <rect class="box " x="230" y="190" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="208.0" text-anchor="middle">解析</text>
+  <text class="s" x="400.0" y="225.0" text-anchor="middle">ox-content (Rust / NAPI)</text>
+  <rect class="box " x="230" y="256" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="274.0" text-anchor="middle">Post[]</text>
+  <text class="s" x="400.0" y="291.0" text-anchor="middle">mdast + 目次</text>
+  <rect class="box " x="230" y="322" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="340.0" text-anchor="middle">React Server Component</text>
+  <text class="s" x="400.0" y="357.0" text-anchor="middle">shiki でハイライト</text>
+  <rect class="box " x="230" y="388" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="406.0" text-anchor="middle">静的ファイル</text>
+  <text class="s" x="400.0" y="423.0" text-anchor="middle">HTML / feed / sitemap / 検索 / OG 画像</text>
+  <rect class="box " x="230" y="482" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="508.0" text-anchor="middle" >Vercel の CDN</text>
+  <rect class="box " x="230" y="548" width="340" height="42" rx="7"/>
+  <text class="t" x="400.0" y="574.0" text-anchor="middle" >読者</text>
+  <path class="arr " d="M400.0 72 V95"/>
+  <text class="s" x="410.0" y="88.0" text-anchor="start">push</text>
+  <path class="arr " d="M400.0 138 V189"/>
+  <text class="s" x="410.0" y="168.0" text-anchor="start">main へのマージでビルド</text>
+  <path class="arr " d="M400.0 232 V255"/>
+  <path class="arr " d="M400.0 298 V321"/>
+  <path class="arr " d="M400.0 364 V387"/>
+  <path class="arr " d="M400.0 430 V481"/>
+  <text class="s" x="410.0" y="460.0" text-anchor="start">デプロイ</text>
+  <path class="arr " d="M400.0 524 V547"/>
+  <text class="s" x="410.0" y="540.0" text-anchor="start">静的ファイルを返す</text>
+  <path class="brk" d="M208 30 H200 V138 H208"/>
+  <text class="lab" x="188" y="84.0" text-anchor="end">書く</text>
+  <path class="brk" d="M208 190 H200 V430 H208"/>
+  <text class="lab" x="188" y="310.0" text-anchor="end">ビルド (Vercel)</text>
+  <path class="brk" d="M208 482 H200 V590 H208"/>
+  <text class="lab" x="188" y="536.0" text-anchor="end">配信</text>
+  <text class="note" x="570" y="612" text-anchor="end">実行時に動くサーバーはない。</text>
+  <text class="star" x="40" y="616">✳</text>
+</svg>
