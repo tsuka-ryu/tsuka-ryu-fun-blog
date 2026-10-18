@@ -357,6 +357,103 @@ Takumi は `png`・`jpeg`・`webp`・`ico`・`raw` に出力できる。ただ�
 - Spike の使い方は、どの枠の何桁も下。有料にしても、基本料金の月 $5 以外に課金が出るとは考えにくい。
 - 出典: Workers の Pricing と Limits、D1、R2、KV、Durable Objects の各 Pricing のページ（developers.cloudflare.com）。
 
+## 本番（Cloudflare）で確認したこと
+
+2026-10-18 に、無料プランのまま `void deploy --platform cloudflare` で本番に上げて確認した。
+
+### デプロイまでに必要だったこと
+
+- `void connect --platform cloudflare` でブラウザからサインインし、アカウントを選ぶ。`.void-wrangler.jsonc` ができる。
+- `void db generate` でマイグレーションの SQL を作る（デプロイの前に必須）。
+- R2 は、アカウントで最初に有効化する操作が要る。していないと、`Please enable R2 through the Cloudflare Dashboard.`
+  （`[code: 10042]`、403）でプロビジョニングが止まる。ダッシュボードの Storage & databases → R2 → Overview で
+  購読の画面を完了する。金額は Total Due Now が $0.00、毎月も $0.00 + 超過分のみ（無料枠: 保存 10GB、Class A 100 万回、
+  Class B 1,000 万回）。購読はサブスクリプションとして残り、自動更新される。不要になれば Billing Subscriptions から
+  解約する。
+- デプロイで作られたもの: Worker（`void-spike`）、D1（`void-spike-db`）、R2 のバケット（`void-spike-storage`）、
+  KV の namespace が 2 つ（`KV` と ISR のキャッシュ用の `ISR_CACHE`）、Durable Object のクラス 2 つ。ID は `void.lock.json` に記録される。
+- 無料プランのままデプロイできた。WASM（圧縮後 1.74MB）、日本語フォント（5.3MB）、`index.js`（圧縮後 325KB）を含めて、
+  Worker のサイズ上限（非圧縮で 64 MiB）に収まった。
+- ビルド中に `Missing required secrets: BETTER_AUTH_SECRET` の警告が出る。Void のドキュメントでは、デプロイ時に
+  なければ作って再利用する。実際にサインアップとセッションが通ったので、作られている。
+
+### `void db generate` が「complete」と出しながら失敗する（Void 1.1.11 のバグ）
+
+`secondaryStorage` を使うと、Better Auth の `session` と `verification` のテーブルが作られなくなる。残る索引は
+`account.userId` だけになる。ところが、別テーブルの `id` を参照する列は、`.void/better-auth-schema.ts` を作る処理
+（`collectCoreImports`）が `index` の import の追加を飛ばす。その結果、生成されたファイルが `index(...)` を使うのに
+import がなく、`ReferenceError: index is not defined` で SQL が作られない。それなのに最後に
+`Migration generation complete.` と出る。`db/migrations/` には `meta/_journal.json` だけができて、`.sql` がない。
+`.sql` ができているかで見分ける。
+
+回避策は、`auth.ts` に `verification: { storeInDatabase: true }` を足して、`verification` テーブルを D1 に残すこと。
+`verification` の索引は参照列ではないので、`index` が import される。そのあと `rm -rf db/migrations` と
+`void prepare`、`void db generate` でやり直す。`session` のテーブルは D1 に作られないまま（セッションは Durable Object）。
+
+### 本番のユーザーの作り方
+
+本番の D1 は空で、`disableSignUp: true` のままだとユーザーを作れない。次の順で作った。
+
+1. `auth.ts` を `disableSignUp: false` にしてデプロイする。
+2. 本番の URL にサインアップする。`origin` ヘッダーは本番の URL に合わせる。パスワードは `openssl rand -base64 24` で作った
+   強いものを使う（公開 URL で誰でも叩ける状態のため）。
+3. `disableSignUp: true` に戻して再デプロイする。知らない人のサインアップは `EMAIL_PASSWORD_SIGN_UP_DISABLED`（400）で
+   拒否され、作ったセッションは再デプロイのあとも有効（`/api/private` が 200）だった。セッションは Durable Object にあるので、
+   Worker を入れ替えても消えない。
+
+実際のブログでは、この手順は避けたい。GitHub ログインで自分の ID だけを許可する形にすると、サインアップを開閉しなくて済む。
+
+### 2 回目のデプロイが `100405` で止まる
+
+`All versions in a multi-version deployment must declare identical exports. Deploy the version that changes exports at 100%
+first, then split traffic.` で止まる。本番のトラフィックは変わらない。原因は、Void の既定のデプロイが `staged`
+（新しい Worker を 0% のトラフィックで置いて確認してから切り替える）で、Cloudflare が、既存の Durable Object を持つ
+Worker を 0% で置けないことがあるため（`docs/reference/config.md` の `deploy.cloudflare.mode`）。なぜ 2 回目に限って
+`exports` が違うと判定されたかは確認していない。1 回目で Durable Object のクラスが追加されたためと推測している。
+
+`void deploy --platform cloudflare --atomic` で、その 1 回だけ `atomic` にする。新しい Worker に先にトラフィックを流し、
+そのあとで Void が動作を確認する。Durable Object のクラスの変更は巻き戻せない。常に `atomic` にするなら、
+`void.config.ts` に `deploy: { cloudflare: { mode: 'atomic' } }` を書く。
+
+### ISR のキャッシュ（本番で確認済み）
+
+| 手順                      | `x-isr-cache` | 本文の時刻         |
+| ------------------------- | ------------- | ------------------ |
+| 1 回目                    | MISS          | 09:31:39           |
+| 2 回目                    | HIT           | 09:31:39（同じ）   |
+| `POST /api/isr`（無効化） | `{"ok":true}` |                    |
+| 3 回目                    | MISS          | 09:32:22（新しい） |
+
+`revalidate({ paths: ["/", …] })` の `/` が正しいキーだった。
+
+### `x-isr-cache` は Void の独自ヘッダー
+
+標準の HTTP ヘッダーではなく、Void が付ける。値は `MISS` / `HIT` / `STALE`（`packages/isr/src/runtime.ts` と `core.ts`）。
+Cloudflare 自体の CDN のキャッシュは `cf-cache-status` で、別物。レスポンスの `cache-control: public, max-age=0,
+must-revalidate` は、ブラウザに「毎回確認しに来い」という指示で、1 時間のキャッシュ（`revalidate = 3600`）は Worker の内側で行う。
+
+### `revalidate` はどうやってキャッシュを消すか
+
+ISR のキャッシュは 2 か所にある。KV の `ISR_CACHE`（ページの HTML とメタ情報）と、エッジのキャッシュ（`caches.default`）。
+`revalidate({ paths })` は、指定したパスについて、KV の項目を `kv.delete` で消し、エッジのキャッシュから HTML 版と
+JSON 版（ページ遷移用のデータ）を `cache.delete` で消す。`all: true` なら KV のキーを一覧して全部消す。
+消えたあとの最初のリクエストは `MISS` になり、Worker が描き直して、KV とエッジに書き戻す。
+読んだのは、Void のプラットフォームを使わない直接の Cloudflare デプロイの分岐（`packages/void/src/runtime/isr.ts`）。
+
+### Cloudflare のアカウント ID は秘密か
+
+公式ドキュメントは、秘密かどうかには触れていない。Cloudflare のスタッフが Workers SDK のディスカッションで、公開の
+`wrangler.toml` にアカウント ID、KV の namespace ID、バケット名を入れてよいと答えている。API トークンがなければ、
+アカウント ID だけでは何も操作できない。守るべきものは、API トークン、`BETTER_AUTH_SECRET`、OAuth のシークレット、
+`.env`。ただし、公開のリポジトリには載せないほうが無難。
+
+### 使った金額の上限は設けられない
+
+Cloudflare にハードキャップ（上限で打ち切る機能）はない。Budget alerts は、アカウント全体の従量課金の合計が、
+設定した金額を超えるとメールで知らせるだけで、「informational only. They do not pause or cap usage.」と
+公式にある。Billing → Billable Usage から作る（Workers & Pages の画面にも「Add Budget Alert」のボタンがある）。
+Pay-as-you-go のアカウント向け。1 リクエストの CPU 時間の上限は `limits.cpu_ms`（有料プラン）で付けられる。
+
 ## D1 と R2
 
 ### `/api/d1` は何をしているか
