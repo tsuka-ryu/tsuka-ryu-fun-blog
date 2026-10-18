@@ -1258,3 +1258,49 @@ Vitest 5.0.3 のブラウザモード + Playwright + `toMatchScreenshot`。60 �
   Linux の Chromium で撮ったもの（ファイル名に `chromium-linux` が入る）。画素の許容差は 0。
 - **書き換え中の記事は対象から外した**（`2026-10-18-void-cloudflare-rebuild`）。記事の内容を変えると
   その記事と一覧・タグのページのベースラインも変わるので、同じ PR でベースラインを更新する。
+
+### 2026-10-18 — Spike の続き（セッションの置き場所、OG 画像の再現）
+
+Phase 0 のローカル確認を最後まで進めた。確認手順は `docs/void-spike-verification.md`（A5b が追加）、
+調べたことの Q&A は `docs/void-spike-qa.md`、動かしたコードは `tsuka-ryu/void-spike`（private）にある。
+本番（Cloudflare）は、引き続き未確認。
+
+- **セッションの置き場所を 3 つ試した**（Better Auth の `secondaryStorage`）。既定は D1 の `session` テーブル。
+  - **Workers KV**: 動いた（`void/kv` をつないだ）。ただし `SecondaryStorage` は原子的な `getAndDelete` と
+    `increment` を求め、KV にはどちらもないので「読む → 書く」の近似になる。50 回を 10 並列で加算すると
+    KV は 9（取りこぼし）、Durable Object は 50 だった。
+  - **Durable Object（`defineDurableState`）**: 動いた。キー 1 つにつき Durable Object を 1 つ作り、呼び出しが
+    直列に実行されるので原子的になる。サインインでセッションができ、D1 の `session` は 0 件のまま、
+    サインアウトで 401 になった。
+  - **D1（既定）**: 追加の設定が要らず、原子的な操作が使え、全セッション破棄も `DELETE` で済む。
+- **現時点の方針**: 管理者が自分 1 人で、公開ページは認証を通らない（ISR で返る）ので、規模の面では D1 で足りる。
+  構成図（`void-spike` の README）は Durable Objects を想定している。どちらにするかは、Phase 5（認証）で決める。
+  KV は、原子的な操作がないので、レート制限のカウンターを置く用途には使わない。
+- **却下した代替**: KV にセッションを置く案。原子的でない近似を自分で書くことになり、結果整合
+  （ログアウト直後に古い値が残りうる）も気にする必要がある。Durable Object のほうが性質がよい。
+- **ハマりどころ**:
+  - `auth.ts` は起動時に、Vite を通さず素の Node の `import()` で読み込まれる。import に拡張子 `.ts` がないと
+    `ERR_MODULE_NOT_FOUND` で起動しない。
+  - `auth.ts` の先頭で Durable Object のモジュールを import すると、その先の `void/durable` が
+    `cloudflare:workers` を import していて、Node が読めず `ERR_UNSUPPORTED_ESM_URL_SCHEME` になる。
+    メソッドの中で動的に import して避けた。
+  - `auth.ts` はプロジェクト直下にあり、Void が `void/kv` などの使用を探す走査の対象外（`routes`・`middleware`・
+    `pages`・`src` など）。`auth.ts` だけで KV を使うと `Missing Cloudflare binding 'KV'` になる。
+    `void.config.ts` の `inference.bindings.kv` で明示する。
+  - KV の設定が足りない状態でサインアップすると、ユーザーだけ D1 に作られてセッションの作成で失敗する。
+    やり直しはサインアップではなくサインインで行う（`USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL` になるため）。
+- **OG 画像を、現行の `OgCard` で再現できた**（WASM 版 Takumi、ローカル）。`OgCard.tsx` をそのままコピーし、
+  `@takumi-rs/helpers/jsx` の `fromJsx` で JSX を要素ツリーにして、`@takumi-rs/wasm` の `Renderer` で描いた。
+  同じ記事のタイトルとメタ行を渡して、現行の `dist/public/og/<slug>.png` と並べて見比べ、帯・サイト名・
+  アスタリスク・タイトルの改行・メタ行が同じだった。違いは PNG の形式のみ（現行は RGB、WASM 版は 256 色の
+  パレット形式）。描画は 21ms（初回 59ms）。日本語フォントは `.bin` にして `ArrayBuffer` として import した。
+- **OG 画像は PNG のままにする**。Takumi は WebP にも出せる（WASM 版は可逆圧縮のみ）が、`og:image` を読む SNS
+  の対応が確実なのは PNG / JPEG で、クローラーが取りに来る画像は容量を減らす利点も小さい。
+- **未確認（次に確認する）**:
+  - 本番の CPU 時間・メモリ。Worker のサイズ（WASM 約 4MB + 日本語フォント 5.3MB で、非圧縮で約 9.3MB）が上限に
+    収まるか。収まらなければ、フォントを R2 から読む。
+  - OG 画像の絵文字（現行は `emoji: "twemoji"` で CDN から SVG を取得）。
+  - 本番での Durable Object のセッション。
+  - 画像の WebP 変換、GitHub OAuth、既存 `src/markdown` レンダラーの確認（変わらず）。
+- **方針への影響**: 計画を変える必要のある結果は出ていない。セッションの置き場所（D1 か Durable Object）が、
+  認証の実装時に決める項目として増えた。

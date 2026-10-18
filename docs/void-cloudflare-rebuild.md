@@ -207,8 +207,8 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 - [ ] 参考記事と Void docs の通りに最小の Void アプリを作り、Workers に `void deploy` できる（**ローカル（workerd）での起動は確認済み**。`void deploy` は Cloudflare アカウントがないクラウドセッションでは未確認。Node 要件は 24.21.0 以上で、`mise.toml` の 24.16.0 から上げる必要がある）
 - [ ] Pages mode で SSR + `revalidate({ paths })` による即時無効化が動く（**SSR・loader・`revalidate({ paths })` の呼び出しはローカルで確認済み**。ISR のキャッシュ自体はローカルでは効かず未確認）
-- [ ] D1 / R2 / Better Auth（GitHub OAuth）がローカルと本番で動く（**D1・R2・メール認証 + 保護ルートの 401 はローカルで確認済み**。GitHub OAuth と本番は未確認）
-- [ ] shiki（JS エンジン）、`@takumi-rs/wasm`（OG）、画像変換（WebP / リサイズ）が Workers で動く。CPU 時間・メモリを計測（**shiki と takumi WASM はローカルで確認済み**。画像変換は未確認。本番の CPU 時間・メモリは未計測）
+- [ ] D1 / R2 / Better Auth（GitHub OAuth）がローカルと本番で動く（**D1・R2・メール認証 + 保護ルートの 401・サインアップを閉じる設定・セッションを Durable Object に置く構成（サインアウトで 401）はローカルで確認済み**。GitHub OAuth と本番は未確認）
+- [ ] shiki（JS エンジン）、`@takumi-rs/wasm`（OG）、画像変換（WebP / リサイズ）が Workers で動く。CPU 時間・メモリを計測（**shiki と takumi WASM はローカルで確認済み。現行の `OgCard` を日本語フォント入りでほぼ再現できた**。絵文字・画像変換は未確認。本番の CPU 時間・メモリ・Worker のサイズは未計測）
 - [ ] 既存 25 記事の使用構文を棚卸し（済: 結果は「自作パーサー」の対応範囲に反映）
 - [x] 結果を `docs/build-log.md` に記録。動かない前提があれば方針を見直してこの計画に反映
 - **完了条件**: 上記がすべて動く、または代替案が決まっている
