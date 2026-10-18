@@ -15,7 +15,8 @@
 | 1 移行前 VRT のベースライン | ✅ 完了（`main` にマージ済み）                                 | 使い方は `vrt/README.md`。移行前の状態が `main` に残っている                                                               |
 | 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中）                             | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層                                            |
 | 3 土台（Void 導入）         | ✅ 完了（`phase-3-foundation` の PR）                          | Void 化・FUNSTACK 撤去・D1 スキーマ。VRT は 2 ページ以外すべて移行前のまま一致                                             |
-| 4〜9                        | ⬜ 未着手                                                      | 「フェーズ」の節を参照                                                                                                     |
+| 4 公開関数と公開側          | ✅ 完了（`phase-4-publish` の PR）                             | 公開関数・R2 から読む公開ページ・`.md` 配信・管理 API（Bearer トークン）。VRT 60 件が一致                                  |
+| 5〜9                        | ⬜ 未着手                                                      | 「フェーズ」の節を参照                                                                                                     |
 
 **人間にしかできないこと**（Cloudflare アカウントが要る）:
 
@@ -264,10 +265,10 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 ### Phase 4: 公開関数と公開側
 
-- [ ] 公開関数（検証 → `post_revisions` 追加 → `posts` 更新 → R2 スナップショット書き出し → ISR 無効化）。冪等で、途中失敗時は `posts` を更新しない
-- [ ] 公開ページ（トップ / 記事 / タグ一覧 / タグ詳細 / About / 404）の loader は R2 のみを読む（D1 を読まないことをテストで保証）
-- [ ] `/posts/<slug>.md` 配信と `<link rel="alternate" type="text/markdown">`、`feed.xml`、`sitemap.xml`、検索インデックス（`search-index.json`）
-- [ ] 旧 URL の揺れ（末尾スラッシュ・`.html`）の 301、`draft` 記事が公開側に一切出ないこと
+- [x] 公開関数（検証 → `post_revisions` 追加 → `posts` 更新 → R2 スナップショット書き出し → ISR 無効化）。冪等で、途中失敗時は `posts` を更新しない
+- [x] 公開ページ（トップ / 記事 / タグ一覧 / タグ詳細 / About / 404）の loader は R2 のみを読む（D1 を読まないことをテストで保証）
+- [x] `/posts/<slug>.md` 配信と `<link rel="alternate" type="text/markdown">`、`feed.xml`、`sitemap.xml`、検索インデックス（`search-index.json`）
+- [x] 旧 URL の揺れ（末尾スラッシュ・`.html`）の 301、`draft` 記事が公開側に一切出ないこと（301 は `void.config.ts` の `routing.redirects` に書いた。ローカルのプレビューでは評価されないので、**本番で確認する**）
 - **完了条件**: テスト用の記事を公開関数で公開すると、HTML・`.md`・feed・sitemap・検索・タグページに反映され、取り下げると消える
 
 ### Phase 5: 認証と管理画面

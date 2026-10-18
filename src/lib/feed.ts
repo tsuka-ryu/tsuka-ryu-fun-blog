@@ -1,11 +1,11 @@
 import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "#constants.js";
-import { getAllPosts, getAllTags } from "#content.js";
 import { dateInTokyo, nowInTokyo, toRfc822 } from "#lib/time.js";
 import { mdastToHtml } from "#markdown/html.js";
 
+import type { Post, SiteIndex } from "#content.js";
 import type { MdastNode } from "#markdown/types.js";
 
-// feed.xml（RSS 2.0）と sitemap.xml を組み立てる。ルート（routes/feed.xml.ts など）から呼ばれる。
+// feed.xml（RSS 2.0）と sitemap.xml を組み立てる。公開のたびに（#site/publish.js）、公開済みの記事から作り直して R2 に置く。
 // 時刻は #lib/time.js 経由で JST 固定にする（pubDate / lastBuildDate は +0900）。
 
 const XML_ESCAPES: Record<string, string> = {
@@ -37,10 +37,10 @@ function cdata(value: string): string {
 }
 
 // 全記事を新しい順に並べた RSS 2.0 フィードを組み立てる。
-export function buildRssFeed(): string {
-  const lastBuildDate = toRfc822(nowInTokyo());
+export function buildRssFeed(posts: readonly Post[], now: Date): string {
+  const lastBuildDate = toRfc822(nowInTokyo(now));
 
-  const items = getAllPosts()
+  const items = posts
     .map((post) => {
       const url = absoluteUrl(`/posts/${post.slug}`);
       const pubDate = toRfc822(dateInTokyo(post.frontmatter.date));
@@ -78,15 +78,13 @@ ${items}
 }
 
 // ホーム / about / タグページ / 全記事を網羅した sitemap.xml を組み立てる。
-export function buildSitemap(): string {
-  // TODO: /about・/tags はフェーズ6で作るページ前提のハードコード。ページ実装が
-  // 出揃ったら、存在するルートから sitemap を生成する形に寄せて結合を解消する。
+export function buildSitemap(index: SiteIndex): string {
   const entries: Array<{ path: string; lastmod?: string }> = [
     { path: "/" },
     { path: "/about" },
     { path: "/tags" },
-    ...getAllTags().map((tag) => ({ path: `/tags/${tag.slug}` })),
-    ...getAllPosts().map((post) => ({
+    ...index.tags.map((tag) => ({ path: `/tags/${tag.slug}` })),
+    ...index.posts.map((post) => ({
       path: `/posts/${post.slug}`,
       lastmod: post.frontmatter.date,
     })),
