@@ -47,6 +47,31 @@ build.ts: Promise.all([ build(), feed.xml, sitemap.xml, search-index.json, searc
 
 記事の解析は `src/content.ts` のモジュール評価時に、全記事ぶん一度に行われます。ルート (一覧、記事、タグ) も、feed や sitemap も、検索インデックスも、すべてこの `Post[]` から派生します。記事がファイルであることを前提にした作りなので、DB に移すと、この入口を丸ごと差し替えることになります。
 
+システム全体の構成図にすると、次のとおりです。書くのも公開するのも Git が起点で、実行時に動くサーバーはありません。
+
+![現在の構成図。content/posts の Markdown を GitHub に push すると Vercel でビルドされ、静的ファイルが CDN から読者に配信される](/blog/architecture-current.svg)
+
+## 移行後の構成
+
+作り直したあとの全体像です。ADR 2 で決めたとおり、読者が触れる経路 (緑) と、自分だけが触れる経路 (橙) を分けています。読者のリクエストは D1 に届きません。
+
+![移行後の構成図。読者は ISR キャッシュと R2 だけに触れ、管理者は Better Auth を通ってエディタから publish を呼び、D1、R2、ISR に書く](/blog/architecture-after.svg)
+
+公開の処理 (`publish`) だけが、D1、R2、ISR の 3 か所に書きます。読者が見るのは R2 なので、R2 を先に書きます (ADR 4)。
+
+主な違いを並べると、次のとおりです。
+
+| 観点             | 現在 (FUNSTACK Static)                   | 移行後 (Void + Cloudflare)                        |
+| ---------------- | ---------------------------------------- | ------------------------------------------------- |
+| 記事の置き場     | Git 上の `content/posts/*.md`            | D1 が正。公開版は R2 のスナップショット           |
+| 書く方法         | エディタで Markdown を編集して push      | 管理画面で書く (自動保存、プレビュー)             |
+| 反映の経路       | push → ビルド → デプロイ                 | 「公開」を押す → R2 に書く → キャッシュを無効化   |
+| 読者への配信     | ビルド済みの静的ファイル (Vercel の CDN) | Worker が R2 を読んで SSR。ISR でキャッシュ       |
+| 実行時のサーバー | なし                                     | Cloudflare Workers                                |
+| Markdown の解析  | ox-content (ネイティブ)。ビルド時のみ    | 自作パーサー (純 TypeScript)。サーバーとブラウザ  |
+| OG 画像          | ビルド時に takumi-js で生成              | 公開時に `@takumi-rs/wasm` で生成して R2 に置く   |
+| 認証             | なし (管理画面がない)                    | Void 組み込みの Better Auth。サインアップは閉じる |
+
 ## ADR 1: 静的生成から、Worker での配信とキャッシュへ
 
 **状態**: 採用
@@ -281,7 +306,10 @@ type Pos = { line: number; column: number; offset: number };
 type Position = { start: Pos; end: Pos };
 type WithPos<T> = T & { position: Position };
 
-function parse(src: string): { ast: WithPos<MdastNode>; diagnostics: Diagnostic[] } {
+function parse(src: string): {
+  ast: WithPos<MdastNode>;
+  diagnostics: Diagnostic[];
+} {
   const lines = splitLines(src); // 行ごとの offset を保持
   const blocks = parseBlocks(lines); // 1 段目: ブロック構造
   const ast = resolveInlines(blocks); // 2 段目: 段落・見出し・表セルの中身をインライン解析
