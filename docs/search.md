@@ -1,82 +1,54 @@
 # 検索の仕組み
 
-このブログのサイト内検索は **ox-content（`@ox-content/napi`）** を使い、
-**ビルド時にインデックスを作る**処理と、**ブラウザ上で検索する**処理を完全に分離している。
-ネイティブ（NAPI）モジュールはクライアントには一切届かない。
+サイト内検索は、**公開時に索引を作って R2 に置き、ブラウザで読み込んで、ブラウザの中で探す**。サーバーは検索を
+実行しない（読者のリクエストで CPU を使わず、D1 にも触れない）。
 
-実装: [`src/lib/search.ts`](../src/lib/search.ts)
+実装: 索引の組み立て [`src/lib/search.ts`](../src/lib/search.ts)、検索 [`src/lib/search-query.ts`](../src/lib/search-query.ts)、
+入力欄 [`src/components/SearchBox.tsx`](../src/components/SearchBox.tsx)。
 
-## 全体像（データフロー）
+## データフロー
 
 ```
-[ビルド時 / サーバー]                          [配信される静的ファイル]        [ブラウザ / クライアント]
-
-src/content.ts (getAllPosts)
-      │  記事の mdast + frontmatter
-      ▼
-src/lib/search.ts
-  collectContent()  ──┐
-  searchDocuments()   │  記事 → JsSearchDocument[]
-      │               │
-      ├─ buildSearchIndexJson()  ──►  /search-index.json  ──┐
-      │  （BM25 インデックスを JSON 化）                      │  fetch
-      │                                                      ▼
-      └─ buildSearchRuntimeJs()  ──►  /search.js  ──►  SearchBox（純 JS ランタイム）
-         （ox-content が生成する純 JS の                      │
-          BM25 検索ランタイム。CJK トークナイズ対応）          ▼
-                                                        検索結果を表示
+公開（src/site/publish.ts）
+  公開中の全記事 ──► buildSearchIndexJson() ──► R2 published/search-index.json
+                                                      │
+                          routes/search-index.json.ts │ 読む（D1 には触れない）
+                                                      ▼
+                    ブラウザ: SearchBox が /search-index.json を 1 回読み込む
+                                                      │ 入力のたびに（120ms 待って）
+                                                      ▼
+                    searchDocuments() が、ブラウザの中で部分一致で探して並べる
 ```
 
-- `buildSearchIndexJson()` / `buildSearchRuntimeJs()` は **build entry（`src/app/build.ts`）**から呼ばれ、
-  生成された HTML と同じ出力ディレクトリに `/search-index.json` と `/search.js` を書き出す。
-- クライアントの `SearchBox`（後フェーズで実装）は `/search.js` を読み込み、`/search-index.json` を
-  取得して検索する。
-- **ネイティブモジュールがブラウザに来ない理由**: `@ox-content/napi` はビルド時にしか呼ばれず、
-  `vite.config.ts` の `ssr.external` / `optimizeDeps.exclude` で除外しているため、クライアント
-  バンドルに混入しない。クライアントが使うのは ox-content が**出力した純 JS の文字列**（`/search.js`）だけ。
+公開・取り下げ・削除のたびに、索引は公開中の全記事から作り直す（`rebuildAggregates`）。下書きは含まれない。
 
-## 検索ドキュメント（`JsSearchDocument`）
+## 検索ドキュメント（`SearchDocument`）
 
-各記事は次の形に変換される（`searchDocuments()`）。
+| フィールド | 中身             | 由来                                     |
+| ---------- | ---------------- | ---------------------------------------- |
+| `id`       | 記事のスラッグ   | `post.slug`                              |
+| `title`    | タイトル         | frontmatter                              |
+| `url`      | 記事の URL       | `/posts/<slug>`                          |
+| `headings` | 見出しのテキスト | `heading` ノード                         |
+| `body`     | 本文のテキスト   | 段落・リストなどの `text` / `inlineCode` |
+| `code`     | コードブロック   | `code` ノード                            |
 
-| フィールド | 中身           | 由来                                   |
-| ---------- | -------------- | -------------------------------------- |
-| `id`       | 記事スラッグ   | `post.slug`                            |
-| `title`    | 記事タイトル   | `post.frontmatter.title`               |
-| `url`      | 記事 URL       | `/posts/<slug>`                        |
-| `body`     | 本文テキスト   | 段落・リスト等の `text` / `inlineCode` |
-| `headings` | 見出しテキスト | `heading` ノード（h1〜h6）             |
-| `code`     | コードブロック | `code` ノード（フェンスドコード）      |
+本文の収集（`collectContent`）は、AST を走査してノードの種類ごとに振り分ける。`code` は子を持たないのでそこで打ち切る。
+`heading` は見出しの集合に入れて、そこで打ち切る（見出しの語が `body` にも入る二重計上を避けるため、配下へは再帰しない）。
 
-`title` / `headings` / `body` / `code` を分けて渡すことで、ox-content 側がフィールドごとに
-重み付けして関連度（BM25 スコア）を計算できる。
+## 検索（`searchDocuments`）
 
-## 本文収集ルール（`collectContent`）
+- 日本語は単語の区切りがないので、形態素解析はせず、**文字列の部分一致**で探す。記事が数十〜数百本の規模なので、
+  全文を走査して十分。
+- 全角・半角、大文字・小文字の違いは、NFKC 正規化と小文字化でならす。
+- 空白（全角を含む）で区切った語が、**すべて含まれる**記事だけを返す。
+- 関連度は、語ごとに点を足して並べる: タイトル（先頭一致 15・部分一致 10）、見出し（5）、本文（1。何度も出るほど少し高く、
+  最大でさらに 1）、コード（0.5）。同点はタイトル順。結果には、最初に一致した本文の位置の前後を切り出したスニペットを
+  付ける（本文に一致がなければ、一致した見出し）。上位 8 件まで。
 
-mdast ツリーを走査し、ノード種別ごとに振り分ける。
+索引が読み込めないとき（`/search-index.json` が失敗したとき）は、入力欄が「検索は準備中です」になって無効になる。
 
-- **`code`**: `code` 配列へ。子は持たないのでそこで打ち切り（再帰しない）。
-- **`heading`**: 見出しテキストを `headings` 配列へ集約し、**そこで打ち切る**。
-  → 見出し語が `body` にも入る「二重計上」を避けるため、heading 配下へは再帰しない。
-- **`text` / `inlineCode`**: 値を `body` 配列へ。
-- **その他（`paragraph` / `list` / `link` など）**: 子ノードへ再帰。
-  → リンクのラベル文字列は `text` 子として `body` に入る（＝検索対象）。リンクの URL は対象外。
+## 規模が大きくなったら
 
-### 現状の非対象
-
-- **画像の `alt`**: `image` ノードは子を持たず `alt` は別フィールドのため、現状インデックスに含めない。
-- **リンクの `url`**: 検索ノイズになるため `body` には含めない（ラベルのみ対象）。
-
-## クライアントランタイムのオプション（`SEARCH_OPTIONS`）
-
-`generateSearchModuleFromOptions` に渡す `JsSearchRuntimeOptions`。
-
-| オプション    | 値                | 意味                                         |
-| ------------- | ----------------- | -------------------------------------------- |
-| `enabled`     | `true`            | 検索を有効化                                 |
-| `limit`       | `8`               | 表示する最大件数                             |
-| `prefix`      | `true`            | 前方一致を有効化                             |
-| `placeholder` | `"記事を検索..."` | 入力欄のプレースホルダ                       |
-| `hotkey`      | `"/"`             | 検索にフォーカスするキーボードショートカット |
-
-インデックスの取得元パスは `INDEX_PATH = "/search-index.json"` で固定。
+記事が数百を超えて、索引の読み込みや走査が重くなったら、D1 の FTS5 や、索引の分割を検討する。ただし D1 は公開側から
+読まない方針なので、FTS5 を使うなら、公開側の経路の見直しが要る（`docs/architecture.md`）。
