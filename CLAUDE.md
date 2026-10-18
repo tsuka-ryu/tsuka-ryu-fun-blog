@@ -12,10 +12,25 @@ FUNSTACK Static で作る静的技術ブログ。
 - 進捗サマリ（フェーズ）は全完了済みなので通常は更新不要。新たに大きな作業単位を
   立てたときだけ追記する。
 
+## 進行中の作り直し（Void + Cloudflare）
+
+ブログを Void + Cloudflare 構成（D1 + 管理画面エディタ + Markdown 配信）に作り直している。
+**作業の前に必ず `docs/void-cloudflare-rebuild.md` を読む。** 現在地、決定事項（早見表）、フェーズ、
+ブランチ戦略、運用ルール、受け入れ条件がすべて書いてある。会話や記憶には頼らない。
+
+- Spike の再現手順と本番での確認手順: `docs/void-spike-verification.md`
+- 判断の経緯（採用理由・却下した代替案・ハマりどころ）: `docs/build-log.md`
+- フェーズが進んだら、同じ PR の中で `docs/void-cloudflare-rebuild.md` のチェックボックスと
+  「現在地」を更新する。決めたこと・ハマったことは `docs/build-log.md` にも追記する。
+- 計画が完了したら、このセクションとディレクトリ構成の節を新構成に合わせて書き換える（Phase 9）。
+
 ## 環境
 
 - `mise.toml` で Node / pnpm を固定（node 24.16.0 / pnpm 11.6.0）。
 - パッケージマネージャは pnpm。
+- push 前のフック（`lefthook.yml`）がビルドまで走らせる。ビルドは `URLPattern` を使うので、
+  **Node 22 以下ではフックが落ちる。** Node 24 を `PATH` の先頭に付けて push する（フックは飛ばさない）。
+- PR のマージはスカッシュのみ（リベースマージは許可されていない）。
 - TypeScript はネイティブ版 `@typescript/native-preview`（`tsgo`）に一本化。
   型チェックは `pnpm typecheck`（= `tsgo --noEmit`）。
 

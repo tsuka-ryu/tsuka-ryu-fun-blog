@@ -1139,3 +1139,76 @@ Markdown でも配信すること。方針・決定事項・フェーズ・受�
   Git を正にする運用（ブラウザ管理画面と合わない）、公開側でも D1 を読む構成（コストが読めない）。
 - **進め方**: 統合ブランチを trunk に `gh stack` でフェーズごとの PR を積む。着手前に現行サイトで
   VRT（Vitest browser mode）のベースラインを撮る。
+
+### 2026-10-18 — Void の Spike（ローカル検証）
+
+Void + Cloudflare 作り直し（`docs/void-cloudflare-rebuild.md`）の Phase 0 として、Void 1.1.11 の
+最小アプリ（`pages/` + `routes/` + D1）をリポジトリ外に作り、計画の前提が動くかを確認した。
+Cloudflare アカウントがないクラウドセッションで行ったため、**確認できたのはローカル（workerd）まで**。
+`void deploy` と本番の挙動は未確認。
+
+- **動いたこと**:
+  - Pages mode の SSR と loader、API ルート（`routes/api/*.ts`）。
+  - D1（`void/db` + Drizzle、`void db push`）と R2（`void/storage`）。
+  - Better Auth: メールでのサインアップ → セッション付きで保護ルートが 200、無しで 401。
+  - `void/isr` の `revalidate({ paths })` の呼び出し（エラーなく 200）。
+  - shiki（`shiki/core` + JS 正規表現エンジン、WASM 不要）。初回 249ms。
+  - `@takumi-rs/wasm` での OG 画像（PNG）生成。初回 95ms、1.3KB（フォント指定なしの最小ノード）。
+- **ハマりどころ**:
+  - Node は 24.21.0 以上が必要（`mise.toml` は 24.16.0）。Vite は 8 系でないと `@void/react` が引き込む
+    `@vitejs/plugin-react` が `vite/internal` を解決できず起動しない（Vite 7 だと失敗）。
+  - pnpm のビルドスクリプトは `esbuild` / `sharp` / `workerd` を許可し、`better-sqlite3` は `false` にする。
+  - D1 / R2 の使用を新しく書いたあとは、dev サーバーの再起動が必要（"New D1 binding detected. Restart to apply."）。
+    再起動前は `Missing Cloudflare binding 'DB'` で 500 になる。
+  - `@takumi-rs/wasm/auto` の workerd 用エントリは default export が `WebAssembly.Module`。
+    `init()` を引数なしで呼ぶのではなく、`init({ module_or_path: wasmModule })` と渡す。
+  - **メール+パスワードのサインアップはデフォルトで誰にでも開いている。** 管理画面を自分だけにするには、
+    `auth.ts` で `emailAndPassword: { enabled: true, disableSignUp: true }` のように閉じる
+    （サインアップが `EMAIL_PASSWORD_SIGN_UP_DISABLED` で拒否され、既存ユーザーのサインインは通ることを確認）。
+    GitHub ログインを使う場合も、自分の GitHub ID 以外のサインアップを拒否する仕組み（Better Auth の
+    `databaseHooks` など）が別途要る。
+- **未確認（次に確認する）**:
+  - `void deploy` による Workers へのデプロイ、本番の D1 / R2 / Better Auth。
+  - ISR のキャッシュ動作（ローカルでは効かない）、オンデマンド無効化が実際に反映されること。
+  - 本番 Workers の CPU 時間・メモリ・スクリプトサイズ（`@takumi-rs/wasm` の `.wasm` は約 4MB。圧縮後は未計測）。
+  - 日本語フォント（Noto Sans JP）を渡した OG 画像の生成時間。
+  - 画像の WebP 変換。Void の docs に Cloudflare Images バインディングの記載はなく、ブラウザ側で変換する案か
+    WASM のライブラリを使う案を別途検証する。
+  - GitHub OAuth のログインと、自分の ID だけを許可する制限。
+  - 既存の `src/markdown` レンダラーが Pages mode 上で動くこと（自作パーサーの完成後に確認する）。
+- **方針への影響**: 今のところ、計画を変える必要のある結果は出ていない。サインアップの閉じ方が
+  決定事項（認証）の実装上の注意点として増えた。
+
+### 2026-10-18 — 作り直しの情報をリポジトリの md に集約（ステートレス化）
+
+作り直しの決定・現在地・運用ルールが会話にしか残っていない状態を避けるため、
+`docs/void-cloudflare-rebuild.md` を唯一の正にした。`CLAUDE.md` から入口を張り、
+どのセッションでも md だけで続きから作業できるようにする。
+
+- **追加したもの**: 現在地と次の一手、用語、決定の早見表、運用ルールと環境の注意、人間にしかできないこと。
+- **運用ルールとして書き残した落とし穴**: push 前フックのビルドは `URLPattern` を使うので Node 22 では落ちる
+  （Node 24 を `PATH` に付けて push する）。マージはスカッシュのみ（リベースマージは 405）。
+  マージ済みのブランチは自動で削除される。記事の lint は `repeated-word` に注意し、`pnpm build` でしか検出できない。
+- **ブランチ戦略の修正**: 当初は作業ブランチ自体を `gh stack` の trunk にする案だったが、docs の PR を
+  `main` へ何度もマージして作り直す運用になり、trunk とは両立しなかった。docs と Phase 0・1 は `main` へ直接、
+  Phase 2 以降は trunk を別に切って積む形に整理した（trunk の名前は未定）。
+- **Issue は使わない。** 進捗は計画書のチェックボックスで追う。
+
+### 2026-10-18 — 設計判断を ADR として記事に記録、公開の書き込み順序を R2 先行に確定
+
+作り直しの設計判断を、ブログ記事（`content/posts/2026-10-18-void-cloudflare-rebuild.md`）に
+ADR の形（状態・背景・選択肢・決定・理由・結果）で 12 件まとめた。計画書の決定の早見表と対応する。
+
+- **公開の書き込み順序を確定**: 当初の計画書は「D1 を更新 → R2 に書き出し → 無効化」だったが、
+  **「R2 → D1 → 無効化」に変えた。** 読者が見るのは R2 なので、D1 を先に公開済みにすると、R2 の書き込みが失敗した
+  ときに「管理画面では公開済みなのに読者に届いていない」状態になる。R2 への書き込みは slug をキーにした
+  上書きで冪等なので、どの段階で失敗しても再実行で収束する。取り下げは逆順（R2 を消してから D1）。
+- **現行コードを読んで見つけた制約（ADR 6）**: `CodeBlock` は async の Server Component で、描画の中で
+  shiki（`bundledLanguages` の全言語バンドル）を呼んでいる。ブラウザのプレビューでは使えない。
+  `tokenize()`（純粋な非同期関数）と、トークンを受け取るだけの同期の `CodeBlock` に分ける。公開時に
+  トークン化して AST に埋めれば、読者のリクエストで shiki は動かない。Phase 3 の項目に追加した。
+- **D1 の読み取りレプリカ**: Void は D1 の作成時にレプリカを有効にする。リクエストをまたぐと古い値が見えうるので、
+  管理画面では、保存した直後に D1 から読み直さず、書き込み系 API の戻り値で画面を更新する。
+- **既存記事の構文の棚卸しで確認したこと**: コードの外にある生の HTML・裸の URL・ハード改行・
+  バックスラッシュ改行・HTML コメントは 0 件。`<T>` 系のジェネリクスはすべてコードの中。
+  現行の `parse` は `taskLists` と `strikethrough` を有効にしているが、実記事では使っていない。
