@@ -150,7 +150,7 @@ A で進める前提で、Phase 0 の Spike で現行の `src/markdown` レン�
 
 - `posts`（**公開中の版**。管理画面の一覧はここを軽く引く）: id, slug(unique), title, description, date, tags(JSON か `post_tags`), published_revision_id, published_at, updated_at。一度も公開していない記事は `published_revision_id` が NULL
 - `post_revisions`（**編集中の下書き + 履歴**）: id, post_id, kind(`draft` | `snapshot` | `published`), title, description, date, tags, body, created_at。`kind = draft` は記事ごとに 1 行だけで、自動保存はこの行を上書きする。`snapshot` は一定時間ごとの版、`published` は公開時の版（別枠で保持し、件数上限の削除対象にしない）
-- 公開時: 公開 API が検証 → `post_revisions` に `published` を追加 → `posts` を更新 → R2 スナップショット書き出し → ISR 無効化（失敗時は `posts` を更新しない／再実行で冪等）
+- 公開時（順序は記事 `content/posts/2026-10-18-void-cloudflare-rebuild.md` の ADR 4 で決定）: 公開 API が検証 → R2 のスナップショット書き出し（slug をキーにした上書き） → `post_revisions` に `published` を追加して `posts` を更新（`db.batch` で 1 往復） → ISR 無効化。**読者が見るのは R2 なので、R2 を先に書く**（逆順だと、管理画面では公開済みなのに読者に届いていない状態を作る）。どこで失敗しても再実行で収束する。取り下げは逆順（R2 を消してから D1 を更新して無効化）
 - 索引: `posts(slug)` unique、`post_revisions(post_id, kind, created_at)`。履歴一覧は本文を引かない
 - **タグ（決定: 正規化テーブル）**: `tags`(id, name, slug unique) と `post_tags`(post_id, tag_id, 公開中の版に対するもの)。`post_revisions` の下書きはタグ名の配列（JSON）で持ち、公開時に `post_tags` へ反映する。管理画面ではタグ入力に既存タグを候補として出し、表記ゆれの確認・タグ名の一括変更ができる。タグごとの記事数・一覧は公開時に集計して R2 の `index.json` に書く（公開側は D1 を読まない）。不採用: `posts` に JSON 配列で持つ案（集計は全記事の読み直し、名前変更が面倒）、現行の文字列のまま持つ案（候補表示が全記事の走査になる）。`tags.slug` は `transliteration` で生成する（現行と同じ。タグページの URL 互換を保つ）
 - `assets`: id, r2_key, content_type, size, post_id?
@@ -234,6 +234,7 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 - [ ] Void 導入（`voidPlugin()` + `@void/react`）、`void.config.ts`、`pages/` / `routes/` の骨組み
 - [ ] D1 スキーマ（`posts` / `post_revisions` / `tags` / `post_tags` / `assets`）と索引、マイグレーション
 - [ ] `src/components` / `src/pages` / `src/markdown` / CSS を Pages mode に移植。FUNSTACK 依存と `src/app/entries.tsx` / `build.ts` を撤去
+- [ ] シンタックスハイライトを描画から切り離す（ADR 6）: `tokenize(code, lang)` を純粋な非同期関数にし、`CodeBlock` はトークン列を props で受け取る同期のコンポーネントにする。`shiki/core` + `createJavaScriptRegexEngine()` + 言語の動的 import に替え、`bundledLanguages` への依存をやめる。公開時にトークン化して AST に埋め、プレビューではブラウザでトークン化する
 - [ ] ox-content / takumi-js のネイティブ依存を `package.json` から外す（置き換えは Phase 2 / 6 で完了していること）
 - **完了条件**: `void dev` でトップ・固定ページが表示される。typecheck / lint / format green
 
