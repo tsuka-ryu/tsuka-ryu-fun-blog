@@ -9,13 +9,13 @@
 
 最終更新: 2026-10-18
 
-| フェーズ                    | 状態                            | メモ                                                                                 |
-| --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------ |
-| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認 | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
-| 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）      | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
-| 2 自作 Markdown パーサー    | ✅ 完了（`main` へ PR 中）      | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。`main` へ直接入れる       |
-| 3 土台（Void 導入）         | ⬜ 未着手                       | 次の着手候補。ここから本番に影響する。**統合ブランチ（trunk）を切ってから始める**    |
-| 4〜9                        | ⬜ 未着手                       | 「フェーズ」の節を参照                                                               |
+| フェーズ                    | 状態                               | メモ                                                                                 |
+| --------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認    | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
+| 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）         | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
+| 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中） | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層      |
+| 3 土台（Void 導入）         | ⬜ 未着手                          | 次の着手候補。ここから本番に影響する。**統合ブランチ（trunk）を切ってから始める**    |
+| 4〜9                        | ⬜ 未着手                          | 「フェーズ」の節を参照                                                               |
 
 **人間にしかできないこと**（Cloudflare アカウントが要る）:
 
@@ -25,7 +25,7 @@
 
 **決まっていないこと**:
 
-- 統合ブランチ（trunk）の名前。Phase 2 の開始前に決める。候補は `void-rebuild`。Claude が新しいブランチを push するには、人間の明示的な許可が要る
+- なし。統合ブランチ（trunk）は **`void-rebuild`**（`main` から切った。Phase 2 以降はここに向けて `gh stack` で積む）
 
 **進行中の PR**: PR #11（Phase 0 の結果、確認手順、記事の書き直し）。最新の状態は GitHub の PR 一覧を見る
 
@@ -170,7 +170,7 @@ A で進める前提で、Phase 0 の Spike で現行の `src/markdown` レン�
 ```text
 main                        ← 本番（Vercel）。切り替え（Phase 8）まで現行のまま
  ├─ （docs / Phase 0・1 は main へ直接 PR。本番に影響しない）
- └─ void-rebuild            ← 統合ブランチ = スタックの trunk（名前は仮。Phase 2 の前に決める）
+ └─ void-rebuild            ← 統合ブランチ = スタックの trunk（作成済み）
      └─ phase-2-parser          (PR → void-rebuild)
          └─ phase-3-foundation  (PR → phase-2-parser)
              └─ phase-4-publish (PR → phase-3-foundation)
@@ -344,7 +344,7 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 - **Markdown パーサー**: TypeScript で自作。却下: remark/unified（依存が重く、方針として自作したい）
 - **Void の成熟度リスク**: Void は 2026-10 に OSS 化されたばかり（v1.1.11 時点）。**特別な備えはせず最新版に追従する**。バージョン固定・薄いラッパー・素の Hono 構成への逃げ道は用意しない。不採用: バージョン固定 + ラッパー、Void 機能を最小化する構成（Void を使う利点が薄れる）。ただし、依存の更新で壊れたときに気づけるよう、移行後も VRT と型チェック・lint を CI で回し続ける
 
-未決事項: 統合ブランチ（trunk）の名前（Phase 2 の前に決める）。Spike で未確認の項目（本番デプロイ、ISR のキャッシュ、画像の WebP 変換、GitHub OAuth、本番の CPU 時間など）は、`docs/void-spike-verification.md` の手順で確認する。
+未決事項: なし。Spike で未確認の項目（本番デプロイ、ISR のキャッシュ、画像の WebP 変換、GitHub OAuth、本番の CPU 時間など）は、`docs/void-spike-verification.md` の手順で確認する。
 
 ## 受け入れ条件
 
