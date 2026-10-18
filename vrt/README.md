@@ -66,11 +66,16 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
 
 ## 仕組み
 
-1. `vrt/global-setup.ts` が、`vite preview`（Void のビルドを workerd 上で動かす本番に近い配信）を
-   ポート 4399 で起動し、応答するまで待つ。終了時にプロセスグループごと止める。
-   `vrt/vitest.config.ts` は、Vitest 自身のパス以外のリクエストをこのプレビューへプロキシする。
-   これでテストのページとサイトが**同じオリジン**になり、iframe の中身を操作できる。
-   未知の URL は Worker が 404 を返す（`middleware/02.not-found.ts`）。
+1. `vrt/global-setup.ts` が、撮る前にサイトを用意する。公開ページは R2 のスナップショットを読むので、
+   まっさらなローカル状態（`vrt/.state/`。開発中の `.void/` には触れない）で `vite preview`
+   （Void のビルドを workerd 上で動かす本番に近い配信）をポート 4399 に起動し、`void db migrate` を流して、
+   `scripts/import-posts.ts` で `content/posts/*.md` を管理 API から取り込む。終了時に止めて状態を消す。
+   - 管理 API のトークンは、`dist/ssr/.dev.vars` に書く（プレビューはシェルの環境変数を受け取らない）。
+   - Vitest は `setup` を 2 回呼ぶことがあるので、起動は 1 回だけにしてある。
+   - 起動や取り込みに失敗したら、`vrt/.vitest/preview.log` にプレビューの出力が残る。
+     `vrt/vitest.config.ts` は、Vitest 自身のパス以外のリクエストをこのプレビューへプロキシする。
+     これでテストのページとサイトが**同じオリジン**になり、iframe の中身を操作できる。
+     未知の URL は Worker が 404 を返す（`middleware/02.not-found.ts`）。
 2. `vrt/site.browser.test.ts` が、テストのページの中に iframe を作って各ページを読み込む（同一オリジンなので
    中身を操作できる）。
 3. 撮る前に、次の処理で描画を安定させる。
