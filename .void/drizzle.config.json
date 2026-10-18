@@ -1,0 +1,11 @@
+{
+  "dialect": "sqlite",
+  "schema": "./db/schema.ts",
+  "out": "./db/migrations",
+  "migrations": {
+    "prefix": "timestamp"
+  },
+  "dbCredentials": {
+    "url": ":memory:"
+  }
+}
