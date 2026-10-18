@@ -1580,3 +1580,14 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
 - **本番でしかできない確認**（人間）: URL の 301（`void.config.ts` の `routing.redirects` は、ワーカーの前で評価される）、
   実際の購読リーダーと SNS のカード、D1 の読み取り行数の計測（Cloudflare のダッシュボード）、利用量アラートの設定、
   Worker の起動時間と CPU 時間（有料プラン）。
+
+### 2026-10-18 — Phase 9: ドキュメントを新構成に更新
+
+- `docs/architecture.md`・`docs/search.md`・`README.md`・`CLAUDE.md` を、FUNSTACK Static + ox-content の静的サイトの記述から、
+  Void + Cloudflare の構成（D1 は管理画面専用、公開側は R2 のスナップショットだけを読む、重い処理は公開時に 1 回）に
+  書き直した。`CLAUDE.md` の「進行中の作り直し」の節は、計画の完了に合わせて、作業フロー・環境・ディレクトリ構成・島の決まりの
+  節に置き換えた（計画の現在地は、引き続き `docs/void-cloudflare-rebuild.md` を正とする）。
+- 検索の説明は、実装（部分一致・点数の付け方・索引の作り直しのタイミング）を読んで書いた。旧版にあった
+  「BM25 のランタイム」は、もうない。
+- **残っている旧構成のもの**: `vercel.json`（Phase 8 で Vercel と一緒に撤去する）、`package.json` の `name`
+  （`tsuka-ryu-funstack-blog`。リネームは影響がないので後回し）、`design/`（デザインの試作で、サイトの構成とは独立）。
