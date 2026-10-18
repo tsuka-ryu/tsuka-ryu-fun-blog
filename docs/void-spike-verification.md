@@ -559,7 +559,15 @@ KV 版で確認できたこと: サインインでセッションが KV に入�
 ## パート B: Cloudflare の本番で確認する
 
 ローカルでは確認できなかった項目（デプロイ、ISR のキャッシュ、本番の CPU 時間とメモリ、スクリプトサイズ）を確認する。
-**自分の Cloudflare アカウントにリソース（Worker・D1・R2）が作られる**ので、確認後に片付ける（B5）。
+**自分の Cloudflare アカウントにリソース（Worker・D1・R2・KV・Durable Object）が作られる**ので、確認後に片付ける（B5）。
+
+プランについて（2026-10-18 に公式ドキュメントで確認した値。詳細は `docs/void-spike-qa.md` の「Cloudflare の料金と制限」）:
+
+- Worker のサイズは、無料・有料とも非圧縮で 64 MiB。圧縮後の上限はない。WASM とフォントを入れても収まる。
+- 違うのは 1 リクエストの CPU 時間。無料は 10ms、有料（Workers Paid、月 $5）は既定 30 秒。
+- 使った金額の上限を設ける機能は、Workers のページには載っていない。Spike の使い方なら、基本料金以外の課金は出にくい。
+- 無料のままデプロイして、`/api/shiki` と `/api/og` が `Error 1102` になるかを見る。なったら Workers Paid に加入して、
+  同じものを測り直す（B4）。
 
 ### B1. デプロイ
 
@@ -571,7 +579,10 @@ pnpm exec void deploy --platform cloudflare
 
 - デプロイの要約に URL が表示される（`https://…workers.dev` の形）。以降、その URL を `$URL` として使う。
 - D1 と R2 は、コードから使用を推論して自動で作られる。要約に作成されたリソースが出るのでメモする。
-- 要約や出力にスクリプトのサイズ（アップロード量）が出る場合は控える。`@takumi-rs/wasm` の `.wasm` は約 4MB（非圧縮）。
+- 要約や出力にスクリプトのサイズ（アップロード量）が出る場合は控える。`@takumi-rs/wasm` の `.wasm` は約 4MB（非圧縮）、
+  日本語フォントは 5.3MB。ローカルのビルドでは、圧縮後が WASM 約 1.7MB、フォント約 3.1MB だった。
+- 日本語フォントは Git に入れていない（`.gitignore`）。デプロイの前に `src/og/fonts/NotoSansJP-Bold.bin` があることを確かめる
+  （ブログの `src/og/fonts/NotoSansJP-Bold.ttf` を、拡張子を `.bin` にしてコピーする）。
 
 ### B2. 基本の動作
 
@@ -603,9 +614,11 @@ curl -s -D - "$URL/" -H 'Accept: text/html' | grep -i -E '^HTTP|x-isr-cache|<h1'
 
 - Cloudflare ダッシュボード → Workers & Pages → 対象の Worker → Metrics で、`/api/shiki` と `/api/og` を叩いたあとの
   CPU time を見る。
-- 無料プランでは 1 リクエストの CPU 時間が 10ms 程度に制限されている。shiki の初期化や WASM の初期化は
-  それを超えて `Error 1102`（Worker exceeded resource limits）になることがある。**超えた場合は有料プラン
-  （Workers Paid）で再度試し、「無料プランでは足りない」ことを記録する。**
+- 無料プランでは 1 リクエストの CPU 時間が 10ms に制限されている。shiki の初期化や WASM の初期化は
+  それを超えて `Error 1102`（Worker exceeded resource limits）になることがある（ローカルでは shiki が 94ms、OG が 21〜59ms）。
+  **超えた場合は有料プラン（Workers Paid、月 $5）で再度試し、「無料プランでは足りない」ことを記録する。**
+- 有料プランでは、暴走を防ぐために `limits.cpu_ms` で 1 リクエストの CPU 時間に上限を付けられる。
+- Durable Object のセッションが本番でも動くか（サインイン → `/api/private` が 200 → サインアウト → 401）も見る。
 - OG は、日本語フォント（Noto Sans JP）を渡した場合の生成時間も見る（計画では公開時に 1 回だけ生成する）。
 
 ### B5. 片付ける
@@ -615,6 +628,9 @@ curl -s -D - "$URL/" -H 'Accept: text/html' | grep -i -E '^HTTP|x-isr-cache|<h1'
 - Workers & Pages → Spike の Worker
 - Storage & Databases → D1 → Spike のデータベース
 - Storage & Databases → R2 → Spike のバケット
+- Storage & Databases → KV → Spike の namespace（`/api/counter?mode=kv` を使った場合）
+- Durable Object は Worker に紐づく（Worker を消すと一緒に消えると理解しているが、ダッシュボードで残っていないか確認する）
+- Workers Paid に加入した場合は、不要になったらプランを解約する。月額の契約なので、日割りで戻るかは未確認。今月中に済ませる
 
 ### B6. 結果を記録する
 
