@@ -44,3 +44,7 @@ vrt/.state/
 
 # D1 の書き出し（下書きを含むので、Git に入れない）
 backups/
+
+# QA スクリプトの一時ファイル
+.qa-state/
+.qa-preview.log

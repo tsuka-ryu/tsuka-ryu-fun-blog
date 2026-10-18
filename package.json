@@ -13,7 +13,7 @@
     "preview": "vite preview --host",
     "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
-    "typecheck": "void prepare && tsgo --noEmit && tsgo --noEmit -p vrt",
+    "typecheck": "void prepare && tsgo --noEmit && tsgo --noEmit -p vrt && tsgo --noEmit -p scripts",
     "test": "vitest run",
     "test:browser": "vitest run --config vrt/vitest.parse.config.ts",
     "lint": "oxlint --type-aware",

@@ -74,6 +74,8 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
      受け取らない。認証のミドルウェアは全リクエストで GitHub の認証情報を要求する）。
    - Vitest は `setup` を 2 回呼ぶことがあるので、起動は 1 回だけにしてある。
    - 起動や取り込みに失敗したら、`vrt/.vitest/preview.log` にプレビューの出力が残る。
+     起動の仕組みは `scripts/lib/preview.ts`（QA の `scripts/qa-preview.ts` と共通）。取り込みのあと、**ベースラインの
+     ファイル名から旧サイトの URL を復元し、すべて 200 で返り sitemap にも載っていること**を確かめる（画像の比較より前）。
      `vrt/vitest.config.ts` は、Vitest 自身のパス以外のリクエストをこのプレビューへプロキシする。
      これでテストのページとサイトが**同じオリジン**になり、iframe の中身を操作できる。
      未知の URL は Worker が 404 を返す（`middleware/02.not-found.ts`）。

@@ -29,6 +29,7 @@ FUNSTACK Static で作る静的技術ブログ。
 - ローカルの環境変数は `docs/local-env.md`（`.env`。島（アイランド）の書き方の決まりもここ）。
 - 単体テストは `pnpm test`（Node）。パーサーの単体テストは、ブラウザでも `pnpm run test:browser`
   （Chromium）で動かせる。push 前のフックにも `pnpm test` が入っている。
+- 公開側の品質確認（記事・`.md`・OG・feed・下書きの非公開・D1 を使わないこと）は `pnpm build && node scripts/qa-preview.ts`。
 - 見た目の確認は VRT（`vrt/`、`pnpm run test:vrt`）。使い方は `vrt/README.md`。記事やサイトの見た目を
   変えたら、`pnpm build` のあとで VRT を回し、意図した差分だけベースラインを更新する。
 - 計画が完了したら、このセクションとディレクトリ構成の節を新構成に合わせて書き換える（Phase 9）。
