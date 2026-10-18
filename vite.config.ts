@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import { voidPlugin } from "void";
 
 export default defineConfig({
-  plugins: [voidPlugin(), voidReact()],
+  plugins: [voidPlugin({ persistTo: process.env.VOID_PERSIST_TO }), voidReact()],
   // content/posts/*.md は ?raw で文字列として読む（src/content.ts）。ただし HMR で
   // 再読み込みされるときはクエリが落ちた素の .md として要求されることがあり、Vite が
   // JS として解析しようとして "invalid JS syntax" で落ちる。アセット扱いにしておくと

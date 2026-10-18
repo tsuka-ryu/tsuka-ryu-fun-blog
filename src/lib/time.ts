@@ -5,9 +5,11 @@ import { Temporal } from "temporal-polyfill-lite";
 // （ハイドレーション）も必ず SITE_TIME_ZONE（JST）で扱い、環境依存の TZ で
 // ブレないようにする。Temporal.Now はシステム TZ ではなく固定 TZ で呼ぶこと。
 
-// 現在時刻を JST の ZonedDateTime で返す（システム TZ に依存しない）。
-export function nowInTokyo(): Temporal.ZonedDateTime {
-  return Temporal.Now.zonedDateTimeISO(SITE_TIME_ZONE);
+// 現在時刻（`now` を渡せばその時刻）を JST の ZonedDateTime で返す（システム TZ に依存しない）。
+export function nowInTokyo(now?: Date): Temporal.ZonedDateTime {
+  return now
+    ? Temporal.Instant.fromEpochMilliseconds(now.getTime()).toZonedDateTimeISO(SITE_TIME_ZONE)
+    : Temporal.Now.zonedDateTimeISO(SITE_TIME_ZONE);
 }
 
 // 記事日付（YYYY-MM-DD）を JST の 0 時の ZonedDateTime にする。

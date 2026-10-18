@@ -23,7 +23,11 @@ export const posts = sqliteTable(
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
   },
-  (t) => [uniqueIndex("posts_slug_unique").on(t.slug)],
+  (t) => [
+    uniqueIndex("posts_slug_unique").on(t.slug),
+    // 管理画面の一覧（更新の新しい順にページング）用。
+    index("posts_updated_at").on(t.updatedAt),
+  ],
 );
 
 /**

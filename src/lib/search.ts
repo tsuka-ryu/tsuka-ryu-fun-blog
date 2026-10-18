@@ -1,5 +1,4 @@
-import { getAllPosts } from "#content.js";
-
+import type { Post } from "#content.js";
 import type { SearchDocument } from "#lib/search-query.js";
 import type { MdastNode } from "#markdown/types.js";
 
@@ -36,8 +35,8 @@ function collectContent(root: MdastNode): { body: string; headings: string[]; co
   return { body: bodyParts.join(" "), headings, code };
 }
 
-export function buildSearchDocuments(): SearchDocument[] {
-  return getAllPosts().map((post): SearchDocument => {
+export function buildSearchDocuments(posts: readonly Post[]): SearchDocument[] {
+  return posts.map((post): SearchDocument => {
     const { body, headings, code } = collectContent(post.mdast);
     return {
       id: post.slug,
@@ -50,6 +49,6 @@ export function buildSearchDocuments(): SearchDocument[] {
   });
 }
 
-export function buildSearchIndexJson(): string {
-  return JSON.stringify(buildSearchDocuments());
+export function buildSearchIndexJson(posts: readonly Post[]): string {
+  return JSON.stringify(buildSearchDocuments(posts));
 }

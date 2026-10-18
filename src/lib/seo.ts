@@ -40,7 +40,7 @@ export interface HeadMeta {
 export interface SeoHead {
   title: string;
   meta: HeadMeta[];
-  link: Array<{ rel: string; href: string }>;
+  link: Array<{ rel: string; href: string; type?: string }>;
 }
 
 const OG_IMAGE_WIDTH = 1200;
@@ -87,5 +87,10 @@ export function seoHead({
       { name: "twitter:image", content: ogImage },
     );
   }
-  return { title: fullTitle, meta, link: canonical ? [{ rel: "canonical", href: canonical }] : [] };
+  const link: SeoHead["link"] = canonical ? [{ rel: "canonical", href: canonical }] : [];
+  // 記事は、同じ内容を Markdown でも配信している（/posts/<slug>.md）。
+  if (type === "article" && canonical) {
+    link.push({ rel: "alternate", type: "text/markdown", href: `${canonical}.md` });
+  }
+  return { title: fullTitle, meta, link };
 }
