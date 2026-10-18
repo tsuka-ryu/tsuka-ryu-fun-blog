@@ -313,7 +313,7 @@ curl -s -X POST -w ' %{http_code}\n' localhost:5199/api/isr
 | #   | 期待する結果                                                                                        | 何を確認しているか                 |
 | --- | --------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 1   | `{"message":"Hello from Void"}`                                                                     | API ルート（`routes/`）            |
-| 2   | `<h1>spike <!-- -->2026-…</h1>`（`{now}` の前に React が `<!-- -->` を挟む）                       | Pages mode の SSR                  |
+| 2   | `<h1>spike <!-- -->2026-…</h1>`（`{now}` の前に React が `<!-- -->` を挟む）                        | Pages mode の SSR                  |
 | 3   | `{"count":1,"first":{"id":1,"slug":"s-…","title":"hello","createdAt":"…"}}`（呼ぶたびに行が増える） | D1 への書き込みと読み取り          |
 | 4   | `{"body":{"ok":true}}`                                                                              | R2 への書き込みと読み取り          |
 | 5   | `Unauthorized 401`                                                                                  | 保護ルート（`requireAuth`）        |
