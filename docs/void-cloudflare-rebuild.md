@@ -1,5 +1,40 @@
 # ブログを Void + Cloudflare 構成に作り直す（D1 + 管理画面エディタ + Markdown 配信）
 
+> **このドキュメントは、作り直しの唯一の正（single source of truth）。** 会話や記憶には頼らず、
+> ここと `docs/void-spike-verification.md`、`docs/build-log.md` だけで続きから作業できるように保つ。
+> フェーズが進んだら、**同じ PR の中で**このドキュメントのチェックボックスと「現在地」を更新する。
+> 決めたこと・却下したこと・ハマったことは、その場で `docs/build-log.md`（ADR 的な変更履歴）にも書く。
+
+## 現在地と次の一手
+
+最終更新: 2026-10-18
+
+| フェーズ                    | 状態                            | メモ                                                                                 |
+| --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------ |
+| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認 | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
+| 1 移行前 VRT のベースライン | ⬜ 未着手                       | 次の着手候補（本番に影響せず、移行前の状態を `main` に残せる）                       |
+| 2 自作 Markdown パーサー    | ⬜ 未着手                       | 依存なし。統合ブランチ（trunk）を切ってから始める                                    |
+| 3〜9                        | ⬜ 未着手                       | 「フェーズ」の節を参照                                                               |
+
+**人間にしかできないこと**（Cloudflare アカウントが要る）:
+
+- `docs/void-spike-verification.md` のパート B（本番デプロイ、ISR のキャッシュ、CPU 時間・メモリ・スクリプトサイズ）を実行し、結果を `docs/build-log.md` に追記する
+- GitHub OAuth App の作成（Phase 5 の前まで）
+- 本番ドメイン `tsuka-ryu.dev` の DNS 切り替え（Phase 8）
+
+**決まっていないこと**:
+
+- 統合ブランチ（trunk）の名前。Phase 2 の開始前に決める。候補は `void-rebuild`。Claude が新しいブランチを push するには、人間の明示的な許可が要る
+
+**進行中の PR**: PR #11（Phase 0 の結果、確認手順、記事の書き直し）。最新の状態は GitHub の PR 一覧を見る
+
+## 用語
+
+- **Spike**: 本番のコードを書く前に、計画の前提が成り立つかを確かめる、小さな使い捨ての実験。Spike のコードは捨てる
+- **trunk（統合ブランチ）**: `gh stack` のスタックの土台になるブランチ。`main` から切り、全フェーズをマージし終えてから `main` に入れる
+- **ISR**: レンダリング結果を Worker のキャッシュに入れ、古くなったら裏で作り直す仕組み。Void では `revalidate` で TTL を指定し、`revalidate({ paths })` で即時に無効化できる
+- **公開スナップショット**: 公開のたびに D1 から R2 に書き出す、公開側が読む専用のデータ（記事 JSON・`.md`・一覧・検索インデックス・feed・sitemap・OG 画像）
+
 ## 背景・目的
 
 現状は FUNSTACK Static で全ページをビルド時に静的 HTML 化し、Vercel に置いている。記事は `content/posts/*.md` を直接編集する運用。
@@ -129,30 +164,44 @@ A で進める前提で、Phase 0 の Spike で現行の `src/markdown` レン�
 
 ## ブランチ戦略（決定: 統合ブランチ + `gh stack` でフェーズを積む）
 
-`main` は Vercel の本番に繋がっており、Phase 3 で FUNSTACK を外すと本番ビルドが落ちる。そのため `main` には切り替え（Phase 8）まで触れず、**統合ブランチを trunk にして、フェーズごとの PR を [`gh stack`](https://github.com/github/gh-stack)（GitHub 公式、public preview）のスタックとして積む**。
+`main` は Vercel の本番に繋がっており、Phase 3 で FUNSTACK を外すと本番ビルドが落ちる。そのため、本番に影響するフェーズ（Phase 3 以降）は `main` に直接入れない。**統合ブランチ（trunk）を `main` から切り、フェーズごとの PR を [`gh stack`](https://github.com/github/gh-stack)（GitHub 公式、public preview）のスタックとして積む。** `gh stack init --base <trunk>` で、`main` 以外を trunk にできる（リポジトリの README で確認済み）。
 
-```
-main                      ← 本番（Vercel）。切り替えまで現行のまま
- └─ claude/blog-void-cloudflare-rebuild-z7elll          ← 統合ブランチ（= スタックの trunk。`gh stack init --base claude/blog-void-cloudflare-rebuild-z7elll`）
-     └─ phase-2-parser          (PR → claude/blog-void-cloudflare-rebuild-z7elll)
+```text
+main                        ← 本番（Vercel）。切り替え（Phase 8）まで現行のまま
+ ├─ （docs / Phase 0・1 は main へ直接 PR。本番に影響しない）
+ └─ void-rebuild            ← 統合ブランチ = スタックの trunk（名前は仮。Phase 2 の前に決める）
+     └─ phase-2-parser          (PR → void-rebuild)
          └─ phase-3-foundation  (PR → phase-2-parser)
              └─ phase-4-publish (PR → phase-3-foundation)
                  └─ phase-5-admin
                      └─ phase-6-og-import
-                         └─ phase-7-qa / phase-9-docs
+                         └─ phase-7-qa → phase-9-docs
 ```
 
-- **スタックの外**: Phase 0（Spike）は捨てる前提の実験なので、スクラッチ用ブランチで行い、結果だけを `docs/build-log.md` に記録する。Phase 1（VRT のベースライン）は現行サイトを撮るだけで本番に影響しないため、`main` に直接 PR（`vrt-baseline` → `main`）で入れ、`main` を `claude/blog-void-cloudflare-rebuild-z7elll` に取り込む。これで移行前の状態が `main` に残り、後の比較に使える
-- **スタック内（線形）**: Phase 2 → 3 → 4 → 5 → 6 → 7 → 9 の順に積む。スタックは線形なので、Phase 2 と 3 の並行作業はせず順番に積む（パーサーは依存がないため先に積んで問題ない）。各 PR は 1 つ下の層をベースにして、差分がそのフェーズ分だけになる
-- **運用**: 下の層がレビューで直ったら `gh stack rebase` / `gh stack sync` で上の層を追従させる。下の層からマージし、マージされた層は rebase が `--onto` で自動追従する。`gh stack submit` で push と PR 作成・更新を一括で行う
-- **切り替え（Phase 8）**: スタックの全層が `claude/blog-void-cloudflare-rebuild-z7elll` にマージされたら、`claude/blog-void-cloudflare-rebuild-z7elll` → `main` の PR を 1 本作り、Phase 7 の受け入れ条件を満たしてからマージ。DNS 切り替えはその後
-- **注意**: `gh stack` は public preview のため、コマンドや挙動が変わる可能性がある。Claude のクラウドセッションには拡張が未インストールで、PR の作成・更新は GitHub MCP 経由でも行える。使えない場合は通常の PR（ベースを 1 つ下の層に指定）で同じ構造を手で組む
+- **`main` に直接入れるもの**: 計画書・手順書・ブログ記事などの docs、Phase 0（Spike の記録）、Phase 1（VRT のベースライン。現行サイトを撮るだけで本番に影響しない。移行前の状態が `main` に残り、後の比較に使える）。Spike のコード自体は捨てる前提なので、リポジトリには入れない（再現に必要なファイルは `docs/void-spike-verification.md` に全文を載せてある）
+- **スタック内（線形）**: Phase 2 → 3 → 4 → 5 → 6 → 7 → 9 の順に積む。スタックは線形なので並行はしない（パーサーは依存がないので先に積む）。各 PR は 1 つ下の層をベースにして、差分がそのフェーズ分だけになる
+- **運用**: 下の層がレビューで直ったら `gh stack rebase` / `gh stack sync` で上の層を追従させる。下の層からマージし、マージされた層は rebase が `--onto` で自動追従する。`gh stack submit` で push と PR の作成・更新を一括で行う
+- **切り替え（Phase 8）**: スタックの全層が trunk にマージされたら、trunk → `main` の PR を 1 本作り、Phase 7 の受け入れ条件を満たしてからマージ。DNS の切り替えはその後
+- **注意**: `gh stack` は public preview のため、コマンドや挙動が変わる可能性がある。Claude のクラウドセッションには拡張が未インストールで、PR の作成・更新は GitHub MCP 経由でも行える。使えない場合は、ベースを 1 つ下の層に指定した通常の PR で、同じ構造を手で組む
+
+## 運用ルールと環境の注意
+
+このリポジトリで作業するときに踏む、環境やルールの落とし穴。
+
+- **Node は 24 を使う。** `mise.toml` は 24.16.0 に固定している（Void を入れる Phase 3 で、Void の要件 24.21.0 以上に上げる）。**push 前のフックがビルドを走らせ、ビルドは `URLPattern` を使うので、Node 22 では `URLPattern is not defined` で失敗する。** Node 24 が入っていない環境では、`npm i node@24.16.0` などで別の場所に用意し、`PATH` の先頭に付けてから push する。フック（`--no-verify`）は飛ばさない
+- **push 前フック**（`lefthook.yml`）: `format:check` → `lint` → `typecheck` → `build` を順に実行する。`pnpm install` の `prepare` で `lefthook install` が走り、フックが有効になる
+- **マージはスカッシュのみ。** このリポジトリはリベースマージを許可していない（405）。`main` の履歴は直線で、マージコミットはない
+- **マージ済みのブランチは自動で削除される。** マージ後に同名のブランチで続けるときは、`main` から作り直して push する
+- **記事の運用**: 未レビューの記事は `draft: true` で置く（dev だけで見える）。公開するときに `draft` の行を消す。AI が書いた記事は、本文の先頭に「この記事は Claude が書いた記事です。」と書く
+- **本文の lint**: ビルドは記事の lint で落ちる。`repeated-word`（近い位置で同じ語が 2 回出る。「Git」「GitHub」など）に注意する。`max-consecutive-blank-lines` と `repeated-punctuation` は非致命（警告のみ）。`pnpm build` でしか検出されないので、記事を書いたら必ずビルドして確認する
+- **PR には Vercel のプレビューが付く。** Vercel のコメント（`Building` → `Ready`）が CI の代わりになる。GitHub Actions はない
+- **コミットとコメント**: `CLAUDE.md` の方針に従う（コメントは日本語、import は subpath imports `#*`、各コミットで `pnpm typecheck` が通ること）
 
 ## フェーズ
 
 進め方の共通ルール: 本番（Vercel）は切り替え（Phase 8）まで現行のまま動かし続ける。フェーズごとに PR を分け（上の「ブランチ戦略」のスタック）、各コミットで `pnpm typecheck`（tsgo）が通る状態を保つ（未作成モジュール依存はスタブではなくコメントアウトで逃がす）。判断の経緯は `docs/build-log.md` に都度追記する。コード内コメントは日本語、import は subpath imports（`#*`）。
 
-依存の順序: 0 → 1 →（2 と 3 は並行可）→ 4 → 5 → 6 → 7 → 8 → 9。
+依存の順序: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9（スタックは線形で、並行はしない）。
 
 ### Phase 0: 検証 Spike（捨てる前提の実験）
 
@@ -172,7 +221,7 @@ main                      ← 本番（Vercel）。切り替えまで現行の�
 - [ ] `test:vrt` スクリプトを追加し、CI で動かす（Linux の Chromium に環境を揃える）
 - **完了条件**: 現行サイトに対して VRT を 3 回連続で流して全て green
 
-### Phase 2: 自作 Markdown パーサー（Phase 3 と並行可）
+### Phase 2: 自作 Markdown パーサー
 
 - [ ] `src/markdown/parse/` に純 TS の依存ゼロ実装（ブロック走査 → インライン解析、frontmatter 分離）。現行 `MdastNode` 互換の AST を出力
 - [ ] 対応範囲は「自作パーサー」の節のとおり。未対応構文は lint エラー
@@ -234,6 +283,34 @@ main                      ← 本番（Vercel）。切り替えまで現行の�
 - [ ] `docs/architecture.md` を新構成に更新（`docs/search.md` も）
 - [ ] `CLAUDE.md` の「ディレクトリ構成」「環境」を更新
 
+## 決定の早見表
+
+詳細と却下した代替案は、各節（方針・管理画面・データモデルなど）に書いてある。
+
+| 論点                 | 決定                                                                                                                              | 詳細の場所                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 全体構成             | Void ネイティブ + Pages mode。Worker で SSR + ISR。FUNSTACK は撤去                                                                | 方針／フレームワーク選択肢                |
+| D1 の使い方          | 管理画面専用。公開側は D1 を読まず、R2 のスナップショットを読む                                                                   | コスト方針                                |
+| 記事の正             | D1 が唯一の正。公開のたびに `.md` を R2 に保存してバックアップ兼配信の元にする                                                    | 決定事項                                  |
+| 認証                 | Void 組み込みの Better Auth + GitHub OAuth。自分以外のサインアップは拒否（メールのサインアップは `disableSignUp: true` で閉じる） | 決定事項／`void-spike-verification.md` A5 |
+| Markdown パーサー    | TypeScript で自作。現行 mdast 互換の AST。対応は実使用の範囲だけ、未対応は lint エラー                                            | 自作パーサー                              |
+| 検索                 | 公開時に `search-index.json` を再生成して R2 に置く。クライアント検索を維持                                                       | コスト方針                                |
+| 反映のタイミング     | TTL は長く、公開・更新・削除の直後に `revalidate({ paths })` で関連ページを即時無効化                                             | コスト方針                                |
+| `.md` 配信           | `/posts/<slug>.md` は frontmatter 付きの原文をそのまま返す。`llms.txt` は当面作らない                                             | コスト方針                                |
+| URL                  | 現行の体系を維持。揺れは 301                                                                                                      | コスト方針                                |
+| エディタとプレビュー | CodeMirror 6。エディタとプレビューのタブ切替（左右分割はしない）                                                                  | 管理画面 MVP                              |
+| 保存                 | 入力が数秒止まったら `draft` を自動保存。公開は明示操作                                                                           | 管理画面 MVP                              |
+| 履歴                 | 残す。一定時間ごとの `snapshot` と公開時の `published`。記事ごとに件数の上限                                                      | 管理画面 MVP                              |
+| 画像                 | ペースト / D&D → WebP に変換 → R2。内容ハッシュのキー。変換の実行場所は未定                                                       | 管理画面 MVP                              |
+| 検証                 | 保存は常に通す。公開時に検証して、エラーなら止める。プレビューにも診断を出す                                                      | 管理画面 MVP                              |
+| データモデル         | `posts`（公開中）+ `post_revisions`（下書き・履歴）。タグは正規化テーブル                                                         | データモデル                              |
+| 既存記事の移行       | 冪等な 1 回限りのインポートスクリプト。`draft: true` は下書きとして入れる                                                         | 既存記事の移行                            |
+| OG 画像              | 公開時に WASM 版 Takumi で生成して R2 に保存                                                                                      | 最大のリスク                              |
+| Void のバージョン    | 固定せず最新に追従。VRT・型チェック・lint を CI で回し続ける                                                                      | 決定事項                                  |
+| VRT                  | Vitest browser mode + `toMatchScreenshot`。移行前のベースラインを先に撮る                                                         | ビジュアルリグレッションテスト            |
+| ブランチ             | trunk + `gh stack` でフェーズを積む。docs と Phase 0・1 は `main` へ直接                                                          | ブランチ戦略                              |
+| Issue                | 使わない。進捗はこのドキュメントのチェックボックスで追う                                                                          | —                                         |
+
 ## 決定事項
 
 - **認証**: Void 組み込みの Better Auth + GitHub OAuth（`providers: ["github"]`）。自分の GitHub ID 以外はサインアップ拒否。却下: Cloudflare Access（ローカル開発で認証が効かず、Zero Trust 設定が別途必要）、メール+パスワード（パスワード管理と 1 人限定の追加実装が要る）
@@ -241,7 +318,7 @@ main                      ← 本番（Vercel）。切り替えまで現行の�
 - **Markdown パーサー**: TypeScript で自作。却下: remark/unified（依存が重く、方針として自作したい）
 - **Void の成熟度リスク**: Void は 2026-10 に OSS 化されたばかり（v1.1.11 時点）。**特別な備えはせず最新版に追従する**。バージョン固定・薄いラッパー・素の Hono 構成への逃げ道は用意しない。不採用: バージョン固定 + ラッパー、Void 機能を最小化する構成（Void を使う利点が薄れる）。ただし、依存の更新で壊れたときに気づけるよう、移行後も VRT と型チェック・lint を CI で回し続ける
 
-未決事項: なし。着手後の Spike（Phase 0）で確認する項目は各フェーズで検証する。
+未決事項: 統合ブランチ（trunk）の名前（Phase 2 の前に決める）。Spike で未確認の項目（本番デプロイ、ISR のキャッシュ、画像の WebP 変換、GitHub OAuth、本番の CPU 時間など）は、`docs/void-spike-verification.md` の手順で確認する。
 
 ## 受け入れ条件
 
