@@ -3,8 +3,9 @@ title: ブログを Void と Cloudflare で作り直します
 description: 静的生成で動いているこのブログを、Void と Cloudflare に載せ替えます。管理画面から記事を書き、DB に保存し、Markdown でも配信する構成にした理由と、決めたことをまとめます。
 date: 2026-10-18
 tags: ["ブログ盆栽", "Void", "Cloudflare"]
-draft: true
 ---
+
+> この記事は Claude が書いた記事です。
 
 この記事では、いまのブログを Void と Cloudflare で作り直す計画と、その計画で決めたことを書きます。作るのはこれからなので、まだ動くものはありません。
 
