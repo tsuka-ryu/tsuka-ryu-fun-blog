@@ -83,6 +83,13 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
      `min-height: 100vh` を使うので、縦幅を変えたあとの高さを測り直して、安定するまで繰り返す。
 4. ブラウザは、ライト固定・アニメーション抑制（`prefers-reduced-motion: reduce`）で起動する。
 
+## 作り直しで、見た目が変わると分かっているページ
+
+自作の Markdown パーサー（`src/markdown/parse/`）に切り替えると、現行の ox-content の不具合で崩れている
+**`/posts/2026-09-25-oxc-ts-parser-map` と `/posts/2026-09-26-oxc-ts-parser-trace`** の見た目が、正しい描画
+（`oxc_parser` の `_` が消えない）に変わる。この 2 ページの差分は意図したもので、ほかのページに差分が出ないことを
+確認してから、ベースラインを更新する。詳しくは `docs/void-cloudflare-rebuild.md` の Phase 2。
+
 ## 注意
 
 - **ベースラインは Linux の Chromium で撮ったもの。** ファイル名にプラットフォームが入る

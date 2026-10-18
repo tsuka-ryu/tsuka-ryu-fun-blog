@@ -13,8 +13,9 @@
 | --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------ |
 | 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認 | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
 | 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）      | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
-| 2 自作 Markdown パーサー    | ⬜ 未着手                       | 次の着手候補。依存なし。統合ブランチ（trunk）を切ってから始める                      |
-| 3〜9                        | ⬜ 未着手                       | 「フェーズ」の節を参照                                                               |
+| 2 自作 Markdown パーサー    | ✅ 完了（`main` へ PR 中）      | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。`main` へ直接入れる       |
+| 3 土台（Void 導入）         | ⬜ 未着手                       | 次の着手候補。ここから本番に影響する。**統合ブランチ（trunk）を切ってから始める**    |
+| 4〜9                        | ⬜ 未着手                       | 「フェーズ」の節を参照                                                               |
 
 **人間にしかできないこと**（Cloudflare アカウントが要る）:
 
@@ -193,7 +194,7 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 - **マージはスカッシュのみ。** このリポジトリはリベースマージを許可していない（405）。`main` の履歴は直線で、マージコミットはない
 - **マージ済みのブランチは自動で削除される。** マージ後に同名のブランチで続けるときは、`main` から作り直して push する
 - **記事の運用**: 未レビューの記事は `draft: true` で置く（dev だけで見える）。公開するときに `draft` の行を消す。AI が書いた記事は、本文の先頭に「この記事は Claude が書いた記事です。」と書く
-- **本文の lint**: ビルドは記事の lint で落ちる。`repeated-word`（近い位置で同じ語が 2 回出る。「Git」「GitHub」など）に注意する。`max-consecutive-blank-lines` と `repeated-punctuation` は非致命（警告のみ）。`pnpm build` でしか検出されないので、記事を書いたら必ずビルドして確認する
+- **本文の lint**: 現行（ox-content）では、ビルドは記事の lint で落ちる。`repeated-word`（近い位置で同じ語が 2 回出る。「Git」「GitHub」など）に注意する。`max-consecutive-blank-lines` と `repeated-punctuation` は非致命（警告のみ）。`pnpm build` でしか検出されないので、記事を書いたら必ずビルドして確認する。自作パーサーに切り替えたあと（Phase 3）は、`repeated-word` は「同じ英単語が連続する」場合だけになる
 - **PR には Vercel のプレビューが付く。** Vercel のコメント（`Building` → `Ready`）が CI の代わりになる。GitHub Actions はない
 - **コミットとコメント**: `CLAUDE.md` の方針に従う（コメントは日本語、import は subpath imports `#*`、各コミットで `pnpm typecheck` が通ること）
 
@@ -226,11 +227,30 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 ### Phase 2: 自作 Markdown パーサー
 
-- [ ] `src/markdown/parse/` に純 TS の依存ゼロ実装（ブロック走査 → インライン解析、frontmatter 分離）。現行 `MdastNode` 互換の AST を出力
-- [ ] 対応範囲は「自作パーサー」の節のとおり。未対応構文は lint エラー
-- [ ] lint（重複見出し・見出しレベル飛び・連続句読点など）と検証（frontmatter・`SAFE_URL`）を、パーサーと同じく純 TS で実装
-- [ ] 単体テスト（構文ごと）と、現行 ox-content の出力との AST スナップショット比較（既存 25 記事）
-- **完了条件**: 既存 25 記事の AST が現行出力と差分ゼロ（意図した差は理由を記録）、単体テスト green。ブラウザ（Vitest browser mode）とサーバー（Node / Workers）の両方で同じ結果
+実装は `src/markdown/parse/`（`index.ts` が入口。`parseDocument(raw)` が frontmatter つきの記事全体、`parseMarkdown(body)` が本文だけを解析して、`{ ast, diagnostics }` を返す）。依存はなく、例外を投げない。まだサイトには繋いでいない（`src/content.ts` は ox-content のまま。繋ぐのは Phase 3）。
+
+- [x] 純 TS・依存ゼロの実装（`block.ts` ブロックの走査 → `inline.ts` インライン解析、`frontmatter.ts`、`lint.ts`）。現行 `MdastNode` 互換の AST を出力し、すべてのノードに `position`（行・桁・offset）を付ける
+- [x] 対応範囲は「自作パーサー」の節のとおり。未対応構文（取り消し線・脚注・生の HTML・Setext 見出し・タスクリスト・参照リンクの定義・インデントのコード）は `unsupported-syntax` の error
+- [x] lint と検証を純 TS で実装: frontmatter の必須項目と型、`SAFE_URL`、見出しレベルの飛び、見出しの重複、同じ英単語の連続（`repeated-word`）、句読点の重複（warning）、行末の空白、空行の連続（warning）、閉じられていないフェンス（warning）
+- [x] 単体テスト 70 件（構文ごと、診断、位置情報、frontmatter、例外を投げないことの確認 = 既存記事を切った入力 + ランダム入力 3000 件 + 深い入れ子）。**Node（`pnpm test`）とブラウザ（`pnpm run test:browser`、Chromium）の両方で同じ結果**
+- [x] 現行 ox-content との AST 照合（`golden.test.ts`、既存 26 記事）。**21 本は厳密に一致。5 本は ox-content の不具合のため、構造と本文だけの緩い比較**（下の「ox-content の不具合」）。ox-content を外す Phase 3 の最後に、このテストごと消す
+- [x] 既存 26 記事（draft を含む）で、error の診断が 0 件
+- **完了条件**: 既存記事の AST が現行出力と差分ゼロ（意図した差は理由を記録）、単体テスト green、ブラウザとサーバーで同じ結果（**達成**）
+
+#### ox-content の不具合（自作パーサーとの意図した差）
+
+自作パーサーは CommonMark の規則どおりに解析する。ox-content は次の書き方を誤って解析する。
+
+1. **単語の途中の `_` を強調として扱う。** `oxc_parser` が `oxc<em>parser…` と描画され、`_` が消える。公開済みの `2026-09-25-oxc-ts-parser-map` と `2026-09-26-oxc-ts-parser-trace` が、いま実際に崩れて描画されている
+2. **インラインコードの中にバッククォートがあると解析できない**（` ` }c` ``、`` ` ``` ` ``）
+
+新しいパーサーを繋ぐ（Phase 3）と、この 2 ページの見た目が正しい描画に変わるので、**VRT（Phase 1 のベースライン）が意図して変わる。** 変わるのがこの 2 ページだけであることを確認してから、ベースラインを更新する。
+
+#### 現行の lint との違い
+
+- `repeated-word` は、現行（ox-content）が「近い位置で同じ語が 2 回」を検出して誤検知が多かった（「Git」「GitHub」など。記事を書くたびに落ちた）のに対し、自作は**同じ英単語が連続する場合（`the the`）だけ**を error にする
+- `max-consecutive-blank-lines` は、現行がフェンスコード直後の空行 1 つを誤検知していたが、自作は正しく扱う（warning のまま）
+- `duplicate-heading` は、同じ見出しの文字列が記事の中で 2 回出たら error（レベルは問わない）
 
 ### Phase 3: 土台（Void 導入・FUNSTACK 撤去）
 
@@ -238,7 +258,8 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 - [ ] D1 スキーマ（`posts` / `post_revisions` / `tags` / `post_tags` / `assets`）と索引、マイグレーション
 - [ ] `src/components` / `src/pages` / `src/markdown` / CSS を Pages mode に移植。FUNSTACK 依存と `src/app/entries.tsx` / `build.ts` を撤去
 - [ ] シンタックスハイライトを描画から切り離す（ADR 6）: `tokenize(code, lang)` を純粋な非同期関数にし、`CodeBlock` はトークン列を props で受け取る同期のコンポーネントにする。`shiki/core` + `createJavaScriptRegexEngine()` + 言語の動的 import に替え、`bundledLanguages` への依存をやめる。公開時にトークン化して AST に埋め、プレビューではブラウザでトークン化する
-- [ ] ox-content / takumi-js のネイティブ依存を `package.json` から外す（置き換えは Phase 2 / 6 で完了していること）
+- [ ] `src/content.ts` の ox-content（`prepareSource` / `parse` / `lintMarkdown`）を、自作パーサー（`parseDocument`）に置き換える。frontmatter・URL・lint の検証は、パーサーの診断（`error` があればビルドを止める）に一本化し、`content.ts` 側の `validateUrls` / `assertFrontmatter` / `NON_FATAL_RULES` は消す。**VRT で、見た目が変わるのが ox-content の不具合の 2 ページ（`2026-09-25-oxc-ts-parser-map`、`2026-09-26-oxc-ts-parser-trace`）だけであることを確認してから、ベースラインを更新する**
+- [ ] ox-content / takumi-js のネイティブ依存を `package.json` から外す（`golden.test.ts` も消す）（置き換えは Phase 2 / 6 で完了していること）
 - **完了条件**: `void dev` でトップ・固定ページが表示される。typecheck / lint / format green
 
 ### Phase 4: 公開関数と公開側

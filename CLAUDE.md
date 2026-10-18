@@ -22,6 +22,8 @@ FUNSTACK Static で作る静的技術ブログ。
 - 判断の経緯（採用理由・却下した代替案・ハマりどころ）: `docs/build-log.md`
 - フェーズが進んだら、同じ PR の中で `docs/void-cloudflare-rebuild.md` のチェックボックスと
   「現在地」を更新する。決めたこと・ハマったことは `docs/build-log.md` にも追記する。
+- 単体テストは `pnpm test`（Node）。パーサーの単体テストは、ブラウザでも `pnpm run test:browser`
+  （Chromium）で動かせる。push 前のフックにも `pnpm test` が入っている。
 - 見た目の確認は VRT（`vrt/`、`pnpm run test:vrt`）。使い方は `vrt/README.md`。記事やサイトの見た目を
   変えたら、`pnpm build` のあとで VRT を回し、意図した差分だけベースラインを更新する。
 - 計画が完了したら、このセクションとディレクトリ構成の節を新構成に合わせて書き換える（Phase 9）。
@@ -44,7 +46,8 @@ FUNSTACK Static で作る静的技術ブログ。
   `entries`・`build` のパスは `vite.config.ts` で `./src/app/...` を指定。
 - `src/components/` — UI 部品（Layout / Header / Footer / Counter など）。
 - `src/pages/` — ページコンポーネント。
-- `src/markdown/` — mdast → React レンダラー。
+- `src/markdown/` — mdast → React レンダラー。`src/markdown/parse/` は自作の Markdown パーサー
+  （純 TS・依存ゼロ。サーバーとブラウザで同じコードを使う）。
 - `src/lib/` — ユーティリティ（site / format / feed / search / og など）。
 - `src/og/` — OG 画像生成。
 - `src/content.ts` — Markdown 読み込み & ox-content 変換（サーバー）。

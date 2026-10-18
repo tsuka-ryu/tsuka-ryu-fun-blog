@@ -1258,3 +1258,45 @@ Vitest 5.0.3 のブラウザモード + Playwright + `toMatchScreenshot`。60 �
   Linux の Chromium で撮ったもの（ファイル名に `chromium-linux` が入る）。画素の許容差は 0。
 - **書き換え中の記事は対象から外した**（`2026-10-18-void-cloudflare-rebuild`）。記事の内容を変えると
   その記事と一覧・タグのページのベースラインも変わるので、同じ PR でベースラインを更新する。
+
+### 2026-10-18 — Phase 2: 自作 Markdown パーサー（`src/markdown/parse/`）
+
+ox-content（Rust/NAPI）に替わる、純 TS・依存ゼロのパーサーを実装した。サーバー（公開時の検証）とブラウザ
+（エディタのプレビュー）で同じコードを使う。まだサイトには繋いでいない（`src/content.ts` は ox-content のまま。
+繋ぐのは Phase 3）ので、本番の出力は変わらない。
+
+- **構成**: `index.ts`（`parseDocument` / `parseMarkdown`）、`block.ts`（行を見て、見出し・段落・リスト・引用・
+  フェンス・表に切り分ける。引用とリストの中身は、記号とインデントを取り除いた行にして再帰的に解析する）、
+  `inline.ts`（エスケープ・コードスパン・リンク・画像・強調・`<url>`・改行）、`frontmatter.ts`（記事で使う
+  YAML の部分集合）、`lint.ts`（診断）、`source.ts`（位置と診断の型）。AST は現行の `MdastNode` に
+  `position`（行・桁・offset、任意）を足したもの。レンダラーは無改修。
+- **強調は CommonMark の delimiter run の方式**にした。`*` と `_` の連なりをスタックに積み、閉じる側が来たら
+  直前の開く側と組にする。left/right-flanking の判定と、3 の倍数の規則も入れた。単語の途中の `_`
+  （`snake_case`）は強調にならない。
+- **リストの最初の行は、記号（`-`、`1.`）を取り除いてから再帰する。** 最初は桁数だけで空白を取り除いて
+  いたため、記号が残り、同じ行を再びリストとして解析し続けて無限再帰になった（既存記事のほとんどが落ちた）。
+- **本文の先頭は、frontmatter の直後の空行を除いたところから**にした（ox-content の `prepareSource` の
+  `content` と同じ。RSS の全文などに使う `body` を変えないため）。
+- **診断**（`{ severity, ruleId, message, from, to, line, column }`）は、パーサーが集める。`from` / `to` は記事全体の
+  先頭からの offset で、エディタの範囲指定にそのまま使える。未対応の構文は `unsupported-syntax` の error。
+- **ox-content の不具合を 2 つ見つけた。** どちらも自作パーサーが CommonMark どおりに解析する。
+  1. 単語の途中の `_` を強調として扱う。`oxc_parser` が `oxc<em>parser…` と描画され、`_` が消える。
+     **公開済みの `2026-09-25-oxc-ts-parser-map` と `2026-09-26-oxc-ts-parser-trace` が、いま実際に崩れている。**
+  2. インラインコードの中にバッククォートがあると解析できない（` ` }c` ``、`` ` ``` ` ``）。
+     → 照合テスト（`golden.test.ts`）は、既存 26 記事のうち 21 本を厳密に比べ、この不具合を含む 5 本だけ、
+     厳密な比較が食い違ったときに、構造と本文だけの緩い比較にする。Phase 3 で繋ぐと、この 2 ページの VRT が
+     意図して変わる。
+- **lint の違い**: `repeated-word` は、現行が「近い位置で同じ語が 2 回」を検出して誤検知が多かった（記事を
+  書くたびに「Git」「GitHub」で落ちた）ので、自作は「同じ英単語が連続する」場合だけにした。
+  `max-consecutive-blank-lines` の、フェンスコード直後の空行 1 つの誤検知は、自作では起きない。
+  ox-content の rule の挙動は、実際に落ちた例からしか分からず、完全には再現できていない。
+- **テスト**: 単体テスト 70 件（構文ごと、診断、位置情報、frontmatter、例外を投げないこと）と、既存記事との
+  照合 52 件。`pnpm test`（Node）に加え、`pnpm run test:browser`（Chromium）で同じ単体テストを動かし、
+  サーバーとブラウザで同じ結果になることを確認した。例外を投げないことの確認は、既存記事を 97 文字ごとに
+  切った入力、Markdown の記号をランダムに並べた入力 3000 件（固定の乱数の種）、深い入れ子を使った。
+- **速度**: 既存 26 記事（約 249KB）を全部解析して約 61ms（ox-content は約 6.5ms）。1 記事 2〜3ms で、
+  プレビューの debounce 解析に十分。増分解析は作らない。
+- **却下した代替**: remark/unified と markdown-it 系（依存が重く、AST が現行の形から離れる）、
+  ox-content の WASM 版（有無が不明）。詳細は記事の ADR 5。
+- **ハマりどころ**: デバッグ用の `console.log` が Vitest の出力に出ないことがある。原因を調べるときは、
+  値を `expect(...).toEqual([])` の失敗として出すと確実に見える。
