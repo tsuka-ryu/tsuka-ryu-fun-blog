@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 
 // ヘッダーの検索欄。ブラウザで索引を読み込んで、入力のたびに（少し待ってから）検索する。
 // ページは JavaScript なしで描画するので、これはアイランド（Header.tsx で `island: "load"`）として動く。
-export function SearchBox() {
+// アイランドとして使うので、default export にする（named export は、アイランドとして読み込まれない）。
+export default function SearchBox() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");

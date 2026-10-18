@@ -4,7 +4,7 @@ import { defineHandler } from "void";
 
 // POST /api/admin/posts/:slug/unpublish  公開を取り下げる（下書きと履歴は残る）
 export const POST = defineHandler(async (c) => {
-  const denied = requireAdmin(c);
+  const denied = await requireAdmin(c);
   if (denied) return denied;
 
   const result = await unpublishPost(publishDeps(), c.req.param("slug") ?? "");

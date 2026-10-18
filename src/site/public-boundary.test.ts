@@ -67,7 +67,13 @@ function importsOf(file: string): string[] {
 
 function entries(): string[] {
   return [
-    ...walk(path.join(root, "pages"), (f) => f.endsWith(".server.ts") || f.endsWith(".island.tsx")),
+    // 管理画面（pages/admin/）は、認可したうえで D1 を使うので、公開側ではない。
+    ...walk(
+      path.join(root, "pages"),
+      (f) =>
+        (f.endsWith(".server.ts") || f.endsWith(".island.tsx")) &&
+        !f.includes(`${path.sep}pages${path.sep}admin${path.sep}`),
+    ),
     ...walk(path.join(root, "middleware"), (f) => f.endsWith(".ts")),
     path.join(root, "routes/feed.xml.ts"),
     path.join(root, "routes/sitemap.xml.ts"),

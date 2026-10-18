@@ -1,12 +1,15 @@
 import { NotFound } from "#components/NotFound.js";
+import { Page } from "#components/Page.js";
 import { PostToc } from "#components/PostToc.js";
 import { TagList } from "#components/TagList.js";
 import { formatDate } from "#lib/time.js";
 import { Markdown } from "#markdown/index.js";
 
+import SearchBox from "../../src/components/SearchBox.tsx" with { island: "load" };
+
 import type { Props } from "./[slug].server.ts";
 
-export default function PostPage({ post }: Props) {
+function PostPage({ post }: Props) {
   if (!post) return <NotFound />;
 
   return (
@@ -37,5 +40,14 @@ export default function PostPage({ post }: Props) {
         </footer>
       </article>
     </div>
+  );
+}
+
+// ヘッダーの検索欄は、このファイルでアイランドにして渡す（理由は #components/Page.js）。
+export default function PostPageWithFrame(props: React.ComponentProps<typeof PostPage>) {
+  return (
+    <Page search={<SearchBox />}>
+      <PostPage {...props} />
+    </Page>
   );
 }

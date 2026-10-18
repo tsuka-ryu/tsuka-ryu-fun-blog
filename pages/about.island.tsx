@@ -1,6 +1,9 @@
-import ShaderGimmick from "#components/ShaderGimmick.js" with { island: "visible" };
+import { Page } from "#components/Page.js";
 
-export default function AboutPage() {
+import SearchBox from "../src/components/SearchBox.tsx" with { island: "load" };
+import ShaderGimmick from "../src/components/ShaderGimmick.tsx" with { island: "visible" };
+
+function AboutPage() {
   return (
     <div className="page about-page">
       {/* 見出しの背後にシェーダーを低不透明度で敷き、ふちをぼかして地に馴染ませる。
@@ -18,5 +21,14 @@ export default function AboutPage() {
         </p>
       </section>
     </div>
+  );
+}
+
+// ヘッダーの検索欄は、このファイルでアイランドにして渡す（理由は #components/Page.js）。
+export default function AboutPageWithFrame() {
+  return (
+    <Page search={<SearchBox />}>
+      <AboutPage />
+    </Page>
   );
 }

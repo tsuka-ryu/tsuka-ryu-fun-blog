@@ -22,6 +22,13 @@ const root = path.resolve(import.meta.dirname, "..");
 const stateDir = path.join(import.meta.dirname, ".state");
 const devVarsFile = path.join(root, "dist/ssr/.dev.vars");
 const token = "vrt-token";
+// 認証のミドルウェアは全リクエストで GitHub の認証情報を要求するので、ダミーの値を渡す（ログインは使わない）。
+const devVars: Record<string, string> = {
+  ADMIN_API_TOKEN: token,
+  AUTH_GITHUB_CLIENT_ID: "vrt",
+  AUTH_GITHUB_CLIENT_SECRET: "vrt",
+  BETTER_AUTH_SECRET: "vrt-secret-for-local-preview-only-0123456789",
+};
 const logFile = path.join(import.meta.dirname, ".vitest/preview.log");
 
 let server: ChildProcess | undefined;
@@ -43,17 +50,21 @@ async function waitUntilReady(url: string, timeoutMs: number): Promise<void> {
 }
 
 /**
- * 管理 API のトークンを、ビルド成果物の `dist/ssr/.dev.vars`（`vite preview` のワーカーが読む環境変数）に書く。
+ * 管理 API のトークンとダミーの認証情報を、ビルド成果物の `dist/ssr/.dev.vars`（`vite preview` のワーカーが読む環境変数）に書く。
  * `.env` はビルド時に `.dev.vars` へ写されるだけで、シェルの環境変数もプレビューには渡らない。
  * ビルドの出力を書き換えるだけなので、開発者の `.env` には触れない。
  */
-function writeAdminToken(): void {
+function writeDevVars(): void {
   if (!existsSync(path.dirname(devVarsFile))) {
     throw new Error("dist/ssr がありません。先に pnpm build してください");
   }
   const lines = existsSync(devVarsFile) ? readFileSync(devVarsFile, "utf8").split("\n") : [];
-  const kept = lines.filter((line) => line.trim() !== "" && !line.startsWith("ADMIN_API_TOKEN="));
-  writeFileSync(devVarsFile, `${[...kept, `ADMIN_API_TOKEN=${token}`].join("\n")}\n`);
+  const keys = Object.keys(devVars);
+  const kept = lines.filter(
+    (line) => line.trim() !== "" && !keys.some((key) => line.startsWith(`${key}=`)),
+  );
+  const added = Object.entries(devVars).map(([key, value]) => `${key}=${value}`);
+  writeFileSync(devVarsFile, `${[...kept, ...added].join("\n")}\n`);
 }
 
 function stopServer() {
@@ -84,7 +95,7 @@ export function setup(): Promise<void> {
 
 async function startSite() {
   rmSync(stateDir, { recursive: true, force: true });
-  writeAdminToken();
+  writeDevVars();
   mkdirSync(path.dirname(logFile), { recursive: true });
   const logFd = openSync(logFile, "w");
   const env = { ...process.env, VOID_PERSIST_TO: stateDir, ADMIN_API_TOKEN: token };

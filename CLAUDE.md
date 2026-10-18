@@ -26,6 +26,7 @@ FUNSTACK Static で作る静的技術ブログ。
 - 判断の経緯（採用理由・却下した代替案・ハマりどころ）: `docs/build-log.md`
 - フェーズが進んだら、同じ PR の中で `docs/void-cloudflare-rebuild.md` のチェックボックスと
   「現在地」を更新する。決めたこと・ハマったことは `docs/build-log.md` にも追記する。
+- ローカルの環境変数は `docs/local-env.md`（`.env`。島（アイランド）の書き方の決まりもここ）。
 - 単体テストは `pnpm test`（Node）。パーサーの単体テストは、ブラウザでも `pnpm run test:browser`
   （Chromium）で動かせる。push 前のフックにも `pnpm test` が入っている。
 - 見た目の確認は VRT（`vrt/`、`pnpm run test:vrt`）。使い方は `vrt/README.md`。記事やサイトの見た目を

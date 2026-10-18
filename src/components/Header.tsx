@@ -1,5 +1,4 @@
 import { Asterisk } from "#components/Asterisk.js";
-import { SearchBox } from "#components/SearchBox.js" with { island: "load" };
 import { SITE_NAME, SOCIAL_LINKS } from "#constants.js";
 import { useShared } from "@void/react";
 
@@ -34,7 +33,7 @@ const socialIcons: Record<string, ReactNode> = {
 
 // サイト共通のヘッダー。現在地（pathname）に応じてナビをアクティブ表示する
 // ため、ルーターのフックを使う Client Component。
-export function Header() {
+export function Header({ search }: { search?: ReactNode }) {
   const { pathname } = useShared();
 
   // pathname は URL 由来で最低でも "/"。ホームは完全一致、他も完全一致で判定。
@@ -65,7 +64,7 @@ export function Header() {
           </nav>
         </div>
         <div className="header-right">
-          <SearchBox />
+          {search}
           <span className="nav-social">
             {SOCIAL_LINKS.map((social) => (
               <a

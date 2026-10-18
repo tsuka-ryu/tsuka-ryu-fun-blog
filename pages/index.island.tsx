@@ -1,10 +1,13 @@
 import { Asterisk, SceneBreak } from "#components/Asterisk.js";
+import { Page } from "#components/Page.js";
 import { PostCard } from "#components/PostCard.js";
 import { SITE_CATCHPHRASE, SITE_NAME } from "#constants.js";
 
+import SearchBox from "../src/components/SearchBox.tsx" with { island: "load" };
+
 import type { Props } from "./index.server.ts";
 
-export default function HomePage({ posts }: Props) {
+function HomePage({ posts }: Props) {
   return (
     <div className="page home-page">
       <section className="hero">
@@ -26,5 +29,14 @@ export default function HomePage({ posts }: Props) {
         ))}
       </section>
     </div>
+  );
+}
+
+// ヘッダーの検索欄は、このファイルでアイランドにして渡す（理由は #components/Page.js）。
+export default function HomePageWithFrame(props: React.ComponentProps<typeof HomePage>) {
+  return (
+    <Page search={<SearchBox />}>
+      <HomePage {...props} />
+    </Page>
   );
 }

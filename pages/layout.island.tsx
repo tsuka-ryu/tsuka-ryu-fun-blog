@@ -1,6 +1,3 @@
-import { Footer } from "#components/Footer.js";
-import { Header } from "#components/Header.js";
-
 import "#styles.css";
 // Web フォントは Zen Kaku Gothic New ひとつに絞る（読み込むファミリーを減らす）。
 // 日本語を表示する以上は日本語フォントが必須で、これは欧文もカバーするため本文・
@@ -12,13 +9,8 @@ import "@fontsource/zen-kaku-gothic-new/700.css";
 
 import type { ReactNode } from "react";
 
-// 全ページ共通の枠組み。ヘッダー／フッターで本文を挟む。
+// 全ページ共通の枠組み。ヘッダー・本文・フッターは、各ページが `Page`（#components/Page.js）で出す
+// （レイアウトの中のアイランドは動かないため。理由は Page.tsx）。
 export default function Layout({ children }: { children: ReactNode }) {
-  return (
-    <div className="layout">
-      <Header />
-      <main className="main">{children}</main>
-      <Footer />
-    </div>
-  );
+  return <div className="layout">{children}</div>;
 }
