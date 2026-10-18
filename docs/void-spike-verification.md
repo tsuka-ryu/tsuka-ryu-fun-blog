@@ -548,13 +548,17 @@ KV 版で確認できたこと: サインインでセッションが KV に入�
 
 ### A6. つまずいたときの表
 
-| 症状                                                           | 原因                                     | 対処                                                        |
-| -------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------- |
-| `ERR_PACKAGE_PATH_NOT_EXPORTED: './internal'` で起動しない     | Vite が 7 系                             | `package.json` の `vite` を `^8.0.16` にして `pnpm install` |
-| 500 と `Missing Cloudflare binding 'DB'`（または `'STORAGE'`） | バインディングの検出後に再起動していない | 開発サーバーを止めて起動し直す                              |
-| `/api/og` が 500（`default is not a function` 系）             | `init()` を引数なしで呼んでいる          | `init({ module_or_path: wasmModule })` と渡す               |
-| `pnpm install` でビルドスクリプトがブロックされる              | pnpm のビルド許可                        | `pnpm-workspace.yaml` の `allowBuilds` を書く（上記）       |
-| 起動時に Node のバージョンエラー                               | Node が 24.21.0 未満                     | Node を上げる                                               |
+| 症状                                                            | 原因                                        | 対処                                                        |
+| --------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
+| `ERR_PACKAGE_PATH_NOT_EXPORTED: './internal'` で起動しない      | Vite が 7 系                                | `package.json` の `vite` を `^8.0.16` にして `pnpm install` |
+| 500 と `Missing Cloudflare binding 'DB'`（または `'STORAGE'`）  | バインディングの検出後に再起動していない    | 開発サーバーを止めて起動し直す                              |
+| `/api/og` が 500（`default is not a function` 系）              | `init()` を引数なしで呼んでいる             | `init({ module_or_path: wasmModule })` と渡す               |
+| `pnpm install` でビルドスクリプトがブロックされる               | pnpm のビルド許可                           | `pnpm-workspace.yaml` の `allowBuilds` を書く（上記）       |
+| 起動時に Node のバージョンエラー                                | Node が 24.21.0 未満                        | Node を上げる                                               |
+| `ERR_MODULE_NOT_FOUND`（`auth.ts` の import）                   | `auth.ts` は素の Node で読まれる            | import に拡張子 `.ts` を付ける                              |
+| `ERR_UNSUPPORTED_ESM_URL_SCHEME`（`cloudflare:`）               | `auth.ts` の先頭で Durable Object を import | メソッドの中で動的に import する（A5b）                     |
+| `Missing Cloudflare binding 'KV'`（`auth.ts` だけで KV を使用） | `auth.ts` は自動検出の走査対象外            | `void.config.ts` の `inference.bindings.kv` で明示する      |
+| `void db generate` が `index is not defined` で SQL を作らない  | `secondaryStorage` 使用時の Void のバグ     | `verification: { storeInDatabase: true }` を足す（B1）      |
 
 ## パート B: Cloudflare の本番で確認する
 
@@ -577,7 +581,16 @@ pnpm exec void db generate                     # スキーマからマイグレ�
 pnpm exec void deploy --platform cloudflare
 ```
 
+- **デプロイの前に、`db/migrations/` に `.sql` ファイルができているか確かめる。** `void db generate` は、失敗しても
+  `Migration generation complete.` と出す（`meta/_journal.json` だけができて、`.sql` がない）。`secondaryStorage` を使うと、
+  `ReferenceError: index is not defined` になる Void 1.1.11 のバグがある。`auth.ts` に `verification: { storeInDatabase:
+true }` を足して、`rm -rf db/migrations`、`void prepare`、`void db generate` でやり直す（`docs/void-spike-qa.md`）。
+- R2 は、アカウントで最初に有効化する操作が要る。していないと `Please enable R2 through the Cloudflare Dashboard.`
+  （403）で止まる。ダッシュボードの Storage & databases → R2 → Overview で購読を完了する（Total Due Now は $0.00）。
+- 2 回目以降のデプロイが `100405`（`All versions in a multi-version deployment must declare identical exports`）で
+  止まったら、`--atomic` を付ける。
 - デプロイの要約に URL が表示される（`https://…workers.dev` の形）。以降、その URL を `$URL` として使う。
+  作られるのは、Worker、D1、R2、KV の namespace が 2 つ（`KV` と `ISR_CACHE`）、Durable Object のクラス。
 - D1 と R2 は、コードから使用を推論して自動で作られる。要約に作成されたリソースが出るのでメモする。
 - 要約や出力にスクリプトのサイズ（アップロード量）が出る場合は控える。`@takumi-rs/wasm` の `.wasm` は約 4MB（非圧縮）、
   日本語フォントは 5.3MB。ローカルのビルドでは、圧縮後が WASM 約 1.7MB、フォント約 3.1MB だった。
@@ -588,6 +601,11 @@ pnpm exec void deploy --platform cloudflare
 
 パート A の 1〜8 と同じ確認を `$URL` に対して行う（`localhost:5199` を `$URL` に置き換える）。
 `/api/d1` は本番の D1 に行を足す（数行なので課金への影響はほぼない）。
+
+結果（無料プラン、2026-10-18）: `/api/hello`、`/`（SSR）、`/api/d1`、`/api/r2`、`/api/counter?mode=kv` が、ローカルと
+同じ結果で通った。本番のユーザーは、サインアップを一時的に開けて作る（強いパスワードで）。サインアップのときは
+`-H "origin: $URL"` を付ける。そのあと `disableSignUp: true` に戻して `--atomic` で再デプロイすると、知らない人の
+サインアップは `EMAIL_PASSWORD_SIGN_UP_DISABLED`（400）、作ったセッションは再デプロイのあとも有効（`/api/private` が 200）。
 
 ### B3. ISR のキャッシュ
 
@@ -606,6 +624,9 @@ curl -s -X POST "$URL/api/isr"
 curl -s -D - "$URL/" -H 'Accept: text/html' | grep -i -E '^HTTP|x-isr-cache|<h1'
 ```
 
+結果（本番で確認済み）: 1 回目 `MISS`（09:31:39）→ 2 回目 `HIT`（同じ時刻）→ `POST /api/isr` が `{"ok":true}` →
+3 回目 `MISS`（09:32:22、新しい時刻）。`x-isr-cache` は Void の独自ヘッダー。
+
 期待する流れは「MISS → HIT（時刻が同じ）→ 無効化 → MISS（時刻が新しい）」。HIT のまま変わらないなら、
 `revalidate({ paths })` のパスの書き方（`/` が正規のキーか）を確認する。
 注意: `Cookie` や `Authorization` 付きのリクエストはキャッシュを素通りするので、ブラウザではなく curl で見る。
@@ -621,14 +642,32 @@ curl -s -D - "$URL/" -H 'Accept: text/html' | grep -i -E '^HTTP|x-isr-cache|<h1'
 - Durable Object のセッションが本番でも動くか（サインイン → `/api/private` が 200 → サインアウト → 401）も見る。
 - OG は、日本語フォント（Noto Sans JP）を渡した場合の生成時間も見る（計画では公開時に 1 回だけ生成する）。
 
+結果（無料プランのまま、`Error 1102` は出なかった）: `/api/shiki`、`/api/og`、`/api/og-post` のいずれも 200 で、
+`/api/og-post` の画像は日本語フォント入りでローカルと同じ見た目（1,200×630、約 17KB）。
+
+**レスポンスの `ms` や `x-render-ms` は、本番では 0 になり、計測に使えない。** デプロイした Workers では、
+`Date.now()` と `performance.now()` が、I/O のあとにしか進まない（Spectre 対策。公式の `performance` のページ）。
+ローカルの `wrangler` では I/O がなくても進むので、ローカルの値（shiki 94ms、OG 21〜59ms）とは比べられない。
+本番の CPU 時間は、ダッシュボードの Workers & Pages → Worker → Metrics で見る。
+
+Metrics の結果（過去 30 分、全リクエストの合計）: P50 57.84ms、P90 105ms、P99・P999 117ms。繰り返し叩いた時間帯の
+ピークは、P50 が約 225ms、P999 が約 340ms。無料プランの 10ms を 10〜30 倍以上超えている。数十回の呼び出しでは
+`Error 1102` にならなかったが、公式ドキュメントには、たまに超えるぶんの余裕はあるが、継続して超えると打ち切られる
+とある。このグラフは全リクエストの合計なので、ルートごとの CPU 時間は分からない（Observability のタブにある
+呼び出しごとのログに出るかは未確認）。有料プランでの確認は、今回していない。
+
 ### B5. 片付ける
 
 確認が済んだら、不要な課金や公開が残らないように消す。Cloudflare ダッシュボードで次を削除する。
 
-- Workers & Pages → Spike の Worker
+- Workers & Pages → Spike の Worker。Void の `void project delete` は Cloudflare のリソースを消さないので
+  （`docs/integrations/cloudflare.md`）、ダッシュボードで消す
 - Storage & Databases → D1 → Spike のデータベース
 - Storage & Databases → R2 → Spike のバケット
-- Storage & Databases → KV → Spike の namespace（`/api/counter?mode=kv` を使った場合）
+- Storage & Databases → KV → Spike の namespace（`KV` と、ISR のキャッシュ用の `ISR_CACHE` の 2 つ）
+- R2 の購読（Storage & databases → R2）は、サブスクリプションとして残り、自動更新される。不要なら Billing Subscriptions から解約する
+- Budget alert（Billing → Billable Usage）を作った場合は、不要なら削除する
+- `prod-cookies.txt` などの本番の Cookie ファイルを消す。サインアウトすると、セッションは無効になる
 - Durable Object は Worker に紐づく（Worker を消すと一緒に消えると理解しているが、ダッシュボードで残っていないか確認する）
 - Workers Paid に加入した場合は、不要になったらプランを解約する。月額の契約なので、日割りで戻るかは未確認。今月中に済ませる
 

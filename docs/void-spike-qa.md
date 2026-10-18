@@ -45,6 +45,31 @@ pnpm の `pnpm-workspace.yaml` に `minimumReleaseAge: 4320`（分）と書く�
 - `void` と `@void/react` は 1.1.11 固定なので、この版が期間内だと弾かれる。
 - pnpm v11（ブログ本体は 11.6.0）の既定値や挙動は未確認。
 
+### dev サーバーの中で、どこで何が動くか
+
+`pnpm exec vite` で立つ 1 つの dev サーバーの中で、コードは 3 か所で動く。
+
+| 場所                                         | 動くもの                                                                      | 役目                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Node（自分の Mac）                           | `vite.config.ts`、`void.config.ts`、`auth.ts`（起動時に 1 回）                | 設定を読む。`auth.ts` から認証用のテーブルを作る                   |
+| `workerd`（Mac 上の Workers 互換ランタイム） | `routes/`、`pages/*.server.ts`、`durable-objects/`、`auth.ts`（リクエスト時） | リクエストを処理する本体。本番の Cloudflare と同じ種類のランタイム |
+| ブラウザ                                     | `pages/index.tsx`（hydration）                                                | `curl` で確かめただけなので、動かしていない                        |
+
+`workerd` の中で使う D1・R2・KV・Durable Object は、`miniflare` が `.void/v3/`（`d1`・`r2`・`kv`・`do`・`cache`）の
+ファイルで模擬する。Cloudflare には何も作らない。
+
+### `void/kv` の実装
+
+Cloudflare の KV の上に薄いラッパーを被せただけの小さなファイル（`packages/void/src/runtime/kv.ts`、ビルド後は
+`dist/runtime/kv.mjs`、約 100 行）。
+
+- `kv` は、実行時に `requireRuntimeBinding("KV")` で `KV` バインディング（`KVNamespace`）を取り出す。`Missing Cloudflare
+binding 'KV'` は、この関数が出すエラー。
+- 書くときは `JSON.stringify`、読むときは `JSON.parse`（失敗したら生の文字列）。`ttl` は `expirationTtl`、`expiration` と
+  `metadata` はそのまま渡す。`delete`・`list`・`getWithMetadata` も Cloudflare のメソッドを呼ぶだけ。
+- `kv.map("sessions")` は、キーの先頭に `sessions:` を付け、一覧で返すときに外す。
+- 加算（`increment`）や「読んで消す」（`getAndDelete`）はない。Cloudflare の KV 自体にその操作がないため。
+
 ## ルーティングと SSR
 
 ### ハンドラーの中身は Hono か
@@ -280,7 +305,36 @@ AWS での選択肢:
 Cloudflare との対応は、Workers KV が DynamoDB に近く、Redis に近い原子的な操作は Durable Objects が近い位置づけ。
 AWS では DB にセッションを置くことは少なく、ElastiCache や DynamoDB に逃がすのが一般的。
 
+## シンタックスハイライト（shiki）
+
+### `/api/shiki` は何をしているか
+
+TypeScript のコードを、色付きの HTML に変換している（`routes/api/shiki.ts`）。
+
+1. テーマ（`github-dark`）と言語（TypeScript、Rust）を読み込み、`createHighlighterCore` でハイライターを作る。正規表現
+   エンジンは `createJavaScriptRegexEngine()`（JS 実装）にして、WASM を避ける。
+2. `const a: number = 1;` を `codeToHtml` に渡す。
+3. 変換にかかった時間（`ms`）と、できた HTML の先頭 80 文字を返す。
+
+返る HTML は、各トークンを `<span style="color:…">` で包んだもので、CSS を別に当てなくても色が付く。確認の目的は、
+ブログのコードブロックの色付けを、Workers の上でできるか。標準の Oniguruma（WASM）は Workers で扱いが面倒なので、
+JS エンジンで動くかを見ている。
+
+ローカルの結果は 94ms（手順書の目安は初回 200〜300ms）。この実装は呼ぶたびにハイライターを作り直しているので、
+2 回目以降も同程度かかる可能性があるが、確かめていない。本番の CPU 時間は、無料プランの 10ms に収まるかをパート B で見る。
+
 ## OG 画像
+
+### 最小の `/api/og` は何をしているか
+
+`routes/api/og.ts` は、WASM 版 Takumi が Workers のランタイムで動くかだけを見る最小のルート。
+
+- 最初の呼び出しで、`init({ module_or_path: wasmModule })` で WASM を初期化し、`Renderer` を作って使い回す。`wasmModule` は
+  `@takumi-rs/wasm/auto` の default export（workerd 用は `WebAssembly.Module`）。`init()` を引数なしで呼ぶと
+  `default is not a function` で落ちる。
+- `{ type: "container", children: [{ type: "text", text: "Hello OG" }] }` を 1200×630 で描く。
+- 結果は 1,200×630 の PNG（約 1.3KB）で、左上に黒い文字で「Hello OG」、残りは白一色。`x-render-ms` は 41。
+- フォントを渡していないので、日本語は描けない（文字化けや欠けが出ると思われる）。
 
 ### 今のブログの OG 画像を WASM 版 Takumi で再現できるか
 
@@ -356,6 +410,160 @@ Takumi は `png`・`jpeg`・`webp`・`ico`・`raw` に出力できる。ただ�
 - 無料プランでも Durable Objects は使える。ただし SQLite 版だけ（`defineDurableState` は SQLite 版）。
 - Spike の使い方は、どの枠の何桁も下。有料にしても、基本料金の月 $5 以外に課金が出るとは考えにくい。
 - 出典: Workers の Pricing と Limits、D1、R2、KV、Durable Objects の各 Pricing のページ（developers.cloudflare.com）。
+
+## ローカルで確認した結果（パート A）
+
+| #    | 確認項目                                       | 結果                                                                                  |
+| ---- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1    | `/api/hello`                                   | `{"message":"Hello from Void"}`                                                       |
+| 2    | `/`（Pages mode の SSR）                       | `<h1>spike <!-- -->2026-10-18T08:12:58.973Z</h1>`（loader の時刻が HTML に入る）      |
+| 3    | `/api/d1`                                      | 行を足して読み戻せた。呼ぶたびに `count` が増え、最大 3 で頭打ち                      |
+| 4    | `/api/r2`                                      | `{"body":{"ok":true}}`                                                                |
+| 5    | `/api/private`（未ログイン）                   | `Unauthorized 401`                                                                    |
+| 6    | `/api/shiki`                                   | 94ms                                                                                  |
+| 7    | `/api/og`                                      | `image/png`、`x-render-ms: 41`、1,200×630、約 1.3KB                                   |
+| 8    | `/api/isr`（POST）                             | `{"ok":true} 200`（ローカルではキャッシュが効かず、呼べるだけの確認）                 |
+| A5   | サインアップ → セッション付きで `/api/private` | 200。セッションなしは 401                                                             |
+| A5   | サインアップを閉じる（`disableSignUp`）        | 知らない人は `EMAIL_PASSWORD_SIGN_UP_DISABLED`（400）、既存ユーザーのサインインは 200 |
+| A5b  | セッションを Durable Object に置く             | サインインで `/api/private` が 200、D1 の `session` は 0 件、サインアウトで 401       |
+| 加算 | 50 回を 10 並列                                | KV は 9、Durable Object は 50                                                         |
+| OG   | 現行の `OgCard` を日本語フォント入りで描く     | 現行の OG 画像とほぼ同じ。描画 21ms（初回 59ms）                                      |
+
+## 本番（Cloudflare）で確認したこと
+
+2026-10-18 に、無料プランのまま `void deploy --platform cloudflare` で本番に上げて確認した。
+
+### デプロイまでに必要だったこと
+
+- `void connect --platform cloudflare` でブラウザからサインインし、アカウントを選ぶ。`.void-wrangler.jsonc` ができる。
+- `void db generate` でマイグレーションの SQL を作る（デプロイの前に必須）。
+- R2 は、アカウントで最初に有効化する操作が要る。していないと、`Please enable R2 through the Cloudflare Dashboard.`
+  （`[code: 10042]`、403）でプロビジョニングが止まる。ダッシュボードの Storage & databases → R2 → Overview で
+  購読の画面を完了する。金額は Total Due Now が $0.00、毎月も $0.00 + 超過分のみ（無料枠: 保存 10GB、Class A 100 万回、
+  Class B 1,000 万回）。購読はサブスクリプションとして残り、自動更新される。不要になれば Billing Subscriptions から
+  解約する。
+- デプロイで作られたもの: Worker（`void-spike`）、D1（`void-spike-db`）、R2 のバケット（`void-spike-storage`）、
+  KV の namespace が 2 つ（`KV` と ISR のキャッシュ用の `ISR_CACHE`）、Durable Object のクラス 2 つ。ID は `void.lock.json` に記録される。
+- 無料プランのままデプロイできた。WASM（圧縮後 1.74MB）、日本語フォント（5.3MB）、`index.js`（圧縮後 325KB）を含めて、
+  Worker のサイズ上限（非圧縮で 64 MiB）に収まった。
+- ビルド中に `Missing required secrets: BETTER_AUTH_SECRET` の警告が出る。Void のドキュメントでは、デプロイ時に
+  なければ作って再利用する。実際にサインアップとセッションが通ったので、作られている。
+
+### `void db generate` が「complete」と出しながら失敗する（Void 1.1.11 のバグ）
+
+`secondaryStorage` を使うと、Better Auth の `session` と `verification` のテーブルが作られなくなる。残る索引は
+`account.userId` だけになる。ところが、別テーブルの `id` を参照する列は、`.void/better-auth-schema.ts` を作る処理
+（`collectCoreImports`）が `index` の import の追加を飛ばす。その結果、生成されたファイルが `index(...)` を使うのに
+import がなく、`ReferenceError: index is not defined` で SQL が作られない。それなのに最後に
+`Migration generation complete.` と出る。`db/migrations/` には `meta/_journal.json` だけができて、`.sql` がない。
+`.sql` ができているかで見分ける。
+
+回避策は、`auth.ts` に `verification: { storeInDatabase: true }` を足して、`verification` テーブルを D1 に残すこと。
+`verification` の索引は参照列ではないので、`index` が import される。そのあと `rm -rf db/migrations` と
+`void prepare`、`void db generate` でやり直す。`session` のテーブルは D1 に作られないまま（セッションは Durable Object）。
+
+### 本番のユーザーの作り方
+
+本番の D1 は空で、`disableSignUp: true` のままだとユーザーを作れない。次の順で作った。
+
+1. `auth.ts` を `disableSignUp: false` にしてデプロイする。
+2. 本番の URL にサインアップする。`origin` ヘッダーは本番の URL に合わせる。パスワードは `openssl rand -base64 24` で作った
+   強いものを使う（公開 URL で誰でも叩ける状態のため）。
+3. `disableSignUp: true` に戻して再デプロイする。知らない人のサインアップは `EMAIL_PASSWORD_SIGN_UP_DISABLED`（400）で
+   拒否され、作ったセッションは再デプロイのあとも有効（`/api/private` が 200）だった。セッションは Durable Object にあるので、
+   Worker を入れ替えても消えない。
+
+実際のブログでは、この手順は避けたい。GitHub ログインで自分の ID だけを許可する形にすると、サインアップを開閉しなくて済む。
+
+### 2 回目のデプロイが `100405` で止まる
+
+`All versions in a multi-version deployment must declare identical exports. Deploy the version that changes exports at 100%
+first, then split traffic.` で止まる。本番のトラフィックは変わらない。原因は、Void の既定のデプロイが `staged`
+（新しい Worker を 0% のトラフィックで置いて確認してから切り替える）で、Cloudflare が、既存の Durable Object を持つ
+Worker を 0% で置けないことがあるため（`docs/reference/config.md` の `deploy.cloudflare.mode`）。なぜ 2 回目に限って
+`exports` が違うと判定されたかは確認していない。1 回目で Durable Object のクラスが追加されたためと推測している。
+
+`void deploy --platform cloudflare --atomic` で、その 1 回だけ `atomic` にする。新しい Worker に先にトラフィックを流し、
+そのあとで Void が動作を確認する。Durable Object のクラスの変更は巻き戻せない。常に `atomic` にするなら、
+`void.config.ts` に `deploy: { cloudflare: { mode: 'atomic' } }` を書く。
+
+### ISR のキャッシュ（本番で確認済み）
+
+| 手順                      | `x-isr-cache` | 本文の時刻         |
+| ------------------------- | ------------- | ------------------ |
+| 1 回目                    | MISS          | 09:31:39           |
+| 2 回目                    | HIT           | 09:31:39（同じ）   |
+| `POST /api/isr`（無効化） | `{"ok":true}` |                    |
+| 3 回目                    | MISS          | 09:32:22（新しい） |
+
+`revalidate({ paths: ["/", …] })` の `/` が正しいキーだった。
+
+### `x-isr-cache` は Void の独自ヘッダー
+
+標準の HTTP ヘッダーではなく、Void が付ける。値は `MISS` / `HIT` / `STALE`（`packages/isr/src/runtime.ts` と `core.ts`）。
+Cloudflare 自体の CDN のキャッシュは `cf-cache-status` で、別物。レスポンスの `cache-control: public, max-age=0,
+must-revalidate` は、ブラウザに「毎回確認しに来い」という指示で、1 時間のキャッシュ（`revalidate = 3600`）は Worker の内側で行う。
+
+### `revalidate` はどうやってキャッシュを消すか
+
+ISR のキャッシュは 2 か所にある。KV の `ISR_CACHE`（ページの HTML とメタ情報）と、エッジのキャッシュ（`caches.default`）。
+`revalidate({ paths })` は、指定したパスについて、KV の項目を `kv.delete` で消し、エッジのキャッシュから HTML 版と
+JSON 版（ページ遷移用のデータ）を `cache.delete` で消す。`all: true` なら KV のキーを一覧して全部消す。
+消えたあとの最初のリクエストは `MISS` になり、Worker が描き直して、KV とエッジに書き戻す。
+読んだのは、Void のプラットフォームを使わない直接の Cloudflare デプロイの分岐（`packages/void/src/runtime/isr.ts`）。
+
+### Cloudflare のアカウント ID は秘密か
+
+公式ドキュメントは、秘密かどうかには触れていない。Cloudflare のスタッフが Workers SDK のディスカッションで、公開の
+`wrangler.toml` にアカウント ID、KV の namespace ID、バケット名を入れてよいと答えている。API トークンがなければ、
+アカウント ID だけでは何も操作できない。守るべきものは、API トークン、`BETTER_AUTH_SECRET`、OAuth のシークレット、
+`.env`。ただし、公開のリポジトリには載せないほうが無難。
+
+### 使った金額の上限は設けられない
+
+Cloudflare にハードキャップ（上限で打ち切る機能）はない。Budget alerts は、アカウント全体の従量課金の合計が、
+設定した金額を超えるとメールで知らせるだけで、「informational only. They do not pause or cap usage.」と
+公式にある。Billing → Billable Usage から作る（Workers & Pages の画面にも「Add Budget Alert」のボタンがある）。
+Pay-as-you-go のアカウント向け。1 リクエストの CPU 時間の上限は `limits.cpu_ms`（有料プラン）で付けられる。
+
+### 本番の CPU 時間はどうなったか
+
+無料プランのまま、`/api/shiki`、`/api/og`、`/api/og-post` を数十回叩いた。すべて 200 で、`Error 1102` は出なかった。
+Metrics（過去 30 分、全リクエストの合計）は、P50 57.84ms、P90 105ms、P99・P999 117ms。ピークは P50 が約 225ms、
+P999 が約 340ms。
+
+- 無料プランの上限は 1 リクエスト 10ms。公式ドキュメントには「各 isolate に、たまに上限を超えるぶんの余裕がある」
+  「継続して上限に当たると、実行は打ち切られる（`Error 1102`、`exceededCpu`）」とある。許容量は書かれていない。
+  数十回の呼び出しは余裕の範囲で通ったと考えられる。継続して使うと落ちる可能性が高い。
+- レスポンスの `ms` は、本番では 0 になる。デプロイした Workers では `Date.now()` と `performance.now()` が I/O のあとにしか
+  進まない（Spectre 対策）。CPU 時間はダッシュボードの Metrics で見る。ローカルの `wrangler` では I/O がなくても進む。
+- Metrics は全リクエストの合計。サインアップ（パスワードのハッシュ化は重い）、D1、ISR の描画も混ざる。ルートごとの
+  CPU 時間は、このグラフでは分からない。
+
+ブログへの影響: 公開ページは ISR で返すので、リクエストごとに shiki を動かさない。コードの色付けと OG 画像は、公開時に
+1 回だけ行う（計画のとおり）。その処理は公開の API の中で動くので、有料プラン（CPU 時間の既定が 30 秒）が要る。
+費用の目安は、CPU 時間が 100 万 ms あたり $0.02（月 3,000 万 ms まで有料プランに含まれる）。1 リクエスト 300ms で
+100 万回なら約 $6 だが、公開側は ISR のキャッシュで返るので、ここまでは使わない。有料プランでの動作は未確認。
+
+### 本番の片付け
+
+`void project delete` は Cloudflare のリソースを消さない（`docs/integrations/cloudflare.md`）。ダッシュボードで、
+Worker、D1、R2 のバケット、KV の namespace（`KV` と `ISR_CACHE`）を消した。R2 の購読と Budget alert は、$0 のままなら
+残してよい。削除後、`$URL/api/hello` は 404 になった。D1、R2、KV の削除は、こちらからは確認できていない
+（`wrangler` が未ログインだったため）。
+
+### 公開前の漏洩チェックで見たこと
+
+`void-spike` を GitHub に置く前に、次を確認した。
+
+- 追跡しているファイルの一覧（`git ls-files`）に、Cookie、`.env`、`.void-wrangler.jsonc` が入っていない。
+  `cookies.txt`、`.env`、`.void-wrangler.jsonc`、`.void/` は `.gitignore` に入れてある。
+- 全履歴（`git log -p --all`）を、アカウント ID、`api_token`、`secret`、`Bearer`、GitHub のトークン（`gho_`、`ghp_`）、
+  `BETTER_AUTH_SECRET` で検索した。見つかったのは、まだ push していないコミットの `account_id` だけ。
+- リポジトリの公開状態は、`void-spike` が private、ブログ本体が public。ブログ本体の手順書や Q&A に入っているのは、
+  サンプルのメールとパスワード（`me@example.com`、`example-password-123`）だけ。ローカル専用で、本番には作っていない。
+- 本番のセッションのトークンやパスワードを、チャットや手順書に貼らない。貼ってしまったら、サインアウトで無効にする。
+  Spike は確認後に Worker ごと消す。
 
 ## D1 と R2
 
