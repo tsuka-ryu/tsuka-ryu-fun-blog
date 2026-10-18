@@ -2,11 +2,28 @@
 # pnpm はデフォルトでビルドスクリプトを止めるため、明示的に許可する。
 allowBuilds:
   lefthook: true
+  # Void が使うネイティブのビルドを許可する。better-sqlite3 は Void が同梱のバイナリを使うので無効。
+  esbuild: true
+  workerd: true
+  better-sqlite3: false
 
 # サプライチェーン対策。公開直後に混入され短時間で取り下げられる汚染版を避けるため、
 # 新規に解決するバージョンは公開から 7 日経過するまで採用しない。既定（1 日）より長くし、
 # 別リポジトリ（tsuka-ryu-s-blog）とも値をそろえて明示する。
 minimumReleaseAge: "10080" # 7 days in minutes
+# 例外: Void（2026-10-15 公開）と、その依存の Cloudflare 系パッケージは、公開から 7 日未満でも採用する。
+# このブログの作り直しは Void の上に作るため、Void 自身とその依存だけは待てない。除外は、実際に
+# このゲートで止まったパッケージに絞る（新しい依存を足すたびに除外を広げない）。7 日が過ぎたら外してよい。
+minimumReleaseAgeExclude:
+  - void
+  - "@void/*"
+  - "@cloudflare/*"
+  - cf
+  - miniflare
+  - workerd
+  - wrangler
+  - mime
+  - mysql2
 # パッケージの信頼度（provenance や署名）が過去リリースより低下したら install を失敗させる。
 trustPolicy: no-downgrade
 # 上記ゲートは新規解決にだけ効かせ、確定済み lockfile の再検証では適用しない。

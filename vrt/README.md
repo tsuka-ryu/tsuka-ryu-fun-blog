@@ -1,6 +1,6 @@
 # VRT（ビジュアルリグレッションテスト）
 
-ビルド済みのサイト（`dist/public`）の見た目が変わっていないことを、スクリーンショットの比較で確かめる。
+ビルド済みの Void のサイト（`vite preview` が配信する Worker）の見た目が変わっていないことを、スクリーンショットの比較で確かめる。
 Void + Cloudflare への作り直し（`docs/void-cloudflare-rebuild.md`）の前後で、見た目が同じであることを
 保証するために作った。移行後も、依存の更新などで見た目が壊れたときに気づくために回し続ける。
 
@@ -11,7 +11,7 @@ Void + Cloudflare への作り直し（`docs/void-cloudflare-rebuild.md`）の�
 ## 実行する
 
 ```sh
-pnpm build            # dist/public を最新にする（記事やコードを変えたら必ず先にビルドする）
+pnpm build            # dist を最新にする（記事やコードを変えたら必ず先にビルドする）
 pnpm run test:vrt     # ベースラインと比べる。全件 green が正常
 ```
 
@@ -49,7 +49,7 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
 
 ## 何を撮っているか
 
-- **対象**: `dist/public/sitemap.xml` に載っているすべてのページ（トップ、About、タグ一覧、タグ詳細、
+- **対象**: `/sitemap.xml`（Worker が動的に返す）に載っているすべてのページ（トップ、About、タグ一覧、タグ詳細、
   公開済みの記事）と、存在しない URL の 404 画面。ページを足すと自動で対象に入る。
   - `draft: true` の記事は本番ビルドに含まれず、sitemap にもないので対象外。
   - 書き換えている最中の記事は、ベースラインが頻繁に変わるので、`EXCLUDED_PATHS` で外している
@@ -66,10 +66,11 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
 
 ## 仕組み
 
-1. `vrt/vitest.config.ts` が、`dist/public` を Vite の `publicDir` として、変換なしでそのまま配る。
-   Vercel の `cleanUrls` と同じ解決（`/posts/x` → `posts/x.html`、存在しないパス → `404.html`）も
-   再現する。サイトのクライアントルーターは URL のパスでルートを照合するので、`.html` 付きの URL
-   だと 404 画面になってしまうため。
+1. `vrt/global-setup.ts` が、`vite preview`（Void のビルドを workerd 上で動かす本番に近い配信）を
+   ポート 4399 で起動し、応答するまで待つ。終了時にプロセスグループごと止める。
+   `vrt/vitest.config.ts` は、Vitest 自身のパス以外のリクエストをこのプレビューへプロキシする。
+   これでテストのページとサイトが**同じオリジン**になり、iframe の中身を操作できる。
+   未知の URL は Worker が 404 を返す（`middleware/02.not-found.ts`）。
 2. `vrt/site.browser.test.ts` が、テストのページの中に iframe を作って各ページを読み込む（同一オリジンなので
    中身を操作できる）。
 3. 撮る前に、次の処理で描画を安定させる。
@@ -83,12 +84,11 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
      `min-height: 100vh` を使うので、縦幅を変えたあとの高さを測り直して、安定するまで繰り返す。
 4. ブラウザは、ライト固定・アニメーション抑制（`prefers-reduced-motion: reduce`）で起動する。
 
-## 作り直しで、見た目が変わると分かっているページ
+## 作り直しで、見た目が変わったページ
 
-自作の Markdown パーサー（`src/markdown/parse/`）に切り替えると、現行の ox-content の不具合で崩れている
-**`/posts/2026-09-25-oxc-ts-parser-map` と `/posts/2026-09-26-oxc-ts-parser-trace`** の見た目が、正しい描画
-（`oxc_parser` の `_` が消えない）に変わる。この 2 ページの差分は意図したもので、ほかのページに差分が出ないことを
-確認してから、ベースラインを更新する。詳しくは `docs/void-cloudflare-rebuild.md` の Phase 2。
+自作の Markdown パーサーに切り替えたとき、ox-content の不具合で崩れていた
+**`/posts/2026-09-25-oxc-ts-parser-map` と `/posts/2026-09-26-oxc-ts-parser-trace`** のベースラインだけを、
+正しい描画（`oxc_parser` の `_` が消えない）に更新した。ほかのページは、移行前のベースラインのまま通っている。
 
 ## 注意
 
@@ -99,6 +99,7 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
   実行すると通る。
 - ベースライン画像は、画像が白く途切れていないかを目で確かめる。下のほうが真っ白な画像は、描画されていない
   （撮り方の不具合）。
-- 画素の許容差は 0（既定値）。Chromium のバージョンが変わると、文字のアンチエイリアスの差で落ちることがある。
+- 画素の許容差は、1 枚あたり 100px まで（`allowedMismatchedPixels`）。テキストノードの分割差で出る文字の
+  サブピクセル揺れ（数〜数十px）を許すため。画面の崩れは数千px単位で差が出るので、検出力は落ちない。Chromium のバージョンが変わると、文字のアンチエイリアスの差で落ちることがある。
   その場合は、変更が見た目の差だけであることを確認してから、ベースラインを更新する。
 - ここにある GitHub Actions はない（このリポジトリには CI がない）。VRT はローカルで手動で回す。

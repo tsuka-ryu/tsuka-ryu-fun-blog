@@ -1,29 +1,17 @@
+import { NotFound } from "#components/NotFound.js";
 import { PostToc } from "#components/PostToc.js";
-import { Seo } from "#components/Seo.js";
 import { TagList } from "#components/TagList.js";
-import { getPostBySlug } from "#content.js";
 import { formatDate } from "#lib/time.js";
 import { Markdown } from "#markdown/index.js";
-import { NotFoundPage } from "#pages/NotFoundPage.js";
 
-// 記事ページ。slug から記事を引き、mdast を <Markdown> で描画する。
-export function PostPage({ slug }: { slug: string }) {
-  const post = getPostBySlug(slug);
+import type { Props } from "./[slug].server.ts";
 
-  if (!post) {
-    return <NotFoundPage />;
-  }
+export default function PostPage({ post }: Props) {
+  if (!post) return <NotFound />;
 
   return (
     <div className="post-layout">
       <article className="post-page">
-        <Seo
-          title={post.frontmatter.title}
-          description={post.frontmatter.description}
-          path={`/posts/${post.slug}`}
-          image={`/og/${post.slug}.png`}
-          type="article"
-        />
         <header className="post-header">
           <h1 className="post-title">{post.frontmatter.title}</h1>
           <p className="post-meta">
@@ -36,8 +24,8 @@ export function PostPage({ slug }: { slug: string }) {
             移す（.post-page を display:contents にしてグリッド項目化する）。 */}
         <PostToc toc={post.toc} />
 
-        {/* mdast はビルド時に React Server Component へマッピングされる。
-            dangerouslySetInnerHTML 不要・Markdown コードはクライアントに載らない。 */}
+        {/* AST は、コードのハイライトまで済ませた状態で loader から届く。
+            dangerouslySetInnerHTML 不要・ページに JavaScript は載らない（アイランドではない）。 */}
         <div className="post-body">
           <Markdown root={post.mdast} />
         </div>

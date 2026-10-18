@@ -1,16 +1,8 @@
-import { Seo } from "#components/Seo.js";
-import ShaderGimmick from "#components/ShaderGimmick.js";
+import ShaderGimmick from "#components/ShaderGimmick.js" with { island: "visible" };
 
-// About ページ。tsuka-ryu の自己紹介とシェーダーの島デモを置く。
-// 内容は既存ブログ tsuka-ryu's blog の About と揃える。
-export function AboutPage() {
+export default function AboutPage() {
   return (
     <div className="page about-page">
-      <Seo
-        title="About me"
-        description="tsuka-ryu について。モダンなWeb技術が好きなフロントエンドエンジニアです。"
-        path="/about"
-      />
       {/* 見出しの背後にシェーダーを低不透明度で敷き、ふちをぼかして地に馴染ませる。
           シェーダーは装飾なので支援技術からは隠す（aria-hidden）。 */}
       <header className="about-hero">

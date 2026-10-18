@@ -1,9 +1,7 @@
-"use client";
-
 import { Asterisk } from "#components/Asterisk.js";
-import { SearchBox } from "#components/SearchBox.js";
+import { SearchBox } from "#components/SearchBox.js" with { island: "load" };
 import { SITE_NAME, SOCIAL_LINKS } from "#constants.js";
-import { useLocation } from "@funstack/router";
+import { useShared } from "@void/react";
 
 import type { ReactNode } from "react";
 
@@ -37,7 +35,7 @@ const socialIcons: Record<string, ReactNode> = {
 // サイト共通のヘッダー。現在地（pathname）に応じてナビをアクティブ表示する
 // ため、ルーターのフックを使う Client Component。
 export function Header() {
-  const { pathname } = useLocation();
+  const { pathname } = useShared();
 
   // pathname は URL 由来で最低でも "/"。ホームは完全一致、他も完全一致で判定。
   const isActive = (path: string) => pathname === path;

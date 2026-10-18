@@ -1,6 +1,5 @@
-"use client";
-
-import { Router, type RouteDefinition } from "@funstack/router";
+import { Footer } from "#components/Footer.js";
+import { Header } from "#components/Header.js";
 
 import "#styles.css";
 // Web フォントは Zen Kaku Gothic New ひとつに絞る（読み込むファミリーを減らす）。
@@ -11,10 +10,15 @@ import "#styles.css";
 import "@fontsource/zen-kaku-gothic-new/400.css";
 import "@fontsource/zen-kaku-gothic-new/700.css";
 
-// アプリのクライアント側エントリ（Client Component）。
-// @funstack/router の <Router> をラップし、ルート定義を渡してクライアントの
-// ルーティングとハイドレーションを担う。SSR 時は ssrPath で対象パスを Router に伝え、
-// グローバル CSS（#styles.css）もここで読み込む。
-export function ClientApp({ routes, ssrPath }: { routes: RouteDefinition[]; ssrPath?: string }) {
-  return <Router routes={routes} fallback="static" ssr={ssrPath ? { path: ssrPath } : undefined} />;
+import type { ReactNode } from "react";
+
+// 全ページ共通の枠組み。ヘッダー／フッターで本文を挟む。
+export default function Layout({ children }: { children: ReactNode }) {
+  return (
+    <div className="layout">
+      <Header />
+      <main className="main">{children}</main>
+      <Footer />
+    </div>
+  );
 }

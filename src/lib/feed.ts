@@ -1,10 +1,11 @@
 import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "#constants.js";
 import { getAllPosts, getAllTags } from "#content.js";
 import { dateInTokyo, nowInTokyo, toRfc822 } from "#lib/time.js";
-import { parseAndRender } from "@ox-content/napi";
+import { mdastToHtml } from "#markdown/html.js";
 
-// feed.xml（RSS 2.0）と sitemap.xml をビルド時に生成する。生成された HTML と
-// 同じ出力ディレクトリに置けるよう、build entry（src/app/build.ts）から呼ばれる。
+import type { MdastNode } from "#markdown/types.js";
+
+// feed.xml（RSS 2.0）と sitemap.xml を組み立てる。ルート（routes/feed.xml.ts など）から呼ばれる。
 // 時刻は #lib/time.js 経由で JST 固定にする（pubDate / lastBuildDate は +0900）。
 
 const XML_ESCAPES: Record<string, string> = {
@@ -24,22 +25,10 @@ function absoluteUrl(path: string): string {
   return new URL(path, SITE_URL).toString();
 }
 
-// 本文 Markdown を HTML 文字列へ描画する（RSS の content:encoded 用）。ox-content の
-// parseAndRender を使う素の HTML で、shiki ハイライトは通らないがリーダー表示には十分。
-// RSS は外部リーダーで読まれるため、サイト相対 URL（/...）は絶対 URL に直す。
-function renderContentHtml(body: string): string {
-  const { html, errors } = parseAndRender(body, {
-    gfm: true,
-    tables: true,
-    taskLists: true,
-    strikethrough: true,
-    autolinks: true,
-  });
-  if (errors.length > 0) {
-    throw new Error(`[feed] 本文の HTML 描画に失敗しました:\n${errors.join("\n")}`);
-  }
-  // href="/..." / src="/..." をオリジン付きに（プロトコル相対 // は対象外）。
-  return html.replace(/(href|src)="\/(?!\/)/g, `$1="${SITE_URL}/`);
+// 記事の AST を HTML 文字列へ描画する（RSS の content:encoded 用）。素の HTML で、shiki ハイライトは
+// 通らないがリーダー表示には十分。RSS は外部リーダーで読まれるため、サイト相対 URL（/...）は絶対 URL に直す。
+function renderContentHtml(root: MdastNode): string {
+  return mdastToHtml(root, { origin: SITE_URL });
 }
 
 // CDATA セクションに安全に埋め込めるよう、本文中の `]]>` を分割する。
@@ -62,7 +51,7 @@ export function buildRssFeed(): string {
         ? `\n      <description>${escapeXml(post.frontmatter.description)}</description>`
         : "";
       // 記事全文を HTML で埋め込む（content:encoded）。リーダーで全文が読める。
-      const content = `\n      <content:encoded>${cdata(renderContentHtml(post.body))}</content:encoded>`;
+      const content = `\n      <content:encoded>${cdata(renderContentHtml(post.mdast))}</content:encoded>`;
 
       return `    <item>
       <title>${escapeXml(post.frontmatter.title)}</title>

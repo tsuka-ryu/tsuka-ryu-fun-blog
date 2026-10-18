@@ -1,41 +1,28 @@
 "use client";
 
+import { searchDocuments, type SearchDocument, type SearchResult } from "#lib/search-query.js";
 import { useEffect, useRef, useState } from "react";
 
-// 生成された検索ランタイムが返す 1 件のヒット。
-// ランタイムは score / matches も返すが、本コンポーネントでは使わないため
-// 描画に必要なフィールドだけを宣言する（消費する形だけを assert）。
-interface SearchResult {
-  id: string;
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-interface SearchRuntime {
-  search: (query: string) => Promise<SearchResult[]>;
-}
-
-// 全文検索ボックス。ox-content が生成するクライアントランタイム（/search.js、
-// ビルドエントリが出力）を遅延ロードし、/search-index.json のインデックスに対して
-// 問い合わせる。どちらの静的ファイルもビルド後のサイトにしか存在しないため、
-// pnpm dev では無効状態にグレースフルにフォールバックする。
+// ヘッダーの検索欄。ブラウザで索引を読み込んで、入力のたびに（少し待ってから）検索する。
+// ページは JavaScript なしで描画するので、これはアイランド（Header.tsx で `island: "load"`）として動く。
 export function SearchBox() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
-  const runtimeRef = useRef<SearchRuntime | null>(null);
+  const documentsRef = useRef<SearchDocument[]>([]);
 
-  // マウント時に一度だけランタイムをロードする。指定子は実行時に組み立てることで、
-  // バンドラに外部の動的 import として扱わせる（このファイルはクライアントバンドルの
-  // 一部ではなく、ビルドエントリが出力する）。
+  // 索引（サーバーが作る /search-index.json）を、最初に 1 回だけ読み込む。
   useEffect(() => {
     let active = true;
-    const runtimeUrl = `${window.location.origin}/search.js`;
-    import(/* @vite-ignore */ runtimeUrl)
-      .then((mod) => {
+    fetch("/search-index.json")
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<SearchDocument[]>)
+          : Promise.reject(new Error(String(res.status))),
+      )
+      .then((documents) => {
         if (!active) return;
-        runtimeRef.current = (mod.default ?? mod) as SearchRuntime;
+        documentsRef.current = documents;
         setStatus("ready");
       })
       .catch(() => {
@@ -46,23 +33,16 @@ export function SearchBox() {
     };
   }, []);
 
-  // ランタイムへのデバウンス付きクエリ。
   useEffect(() => {
-    const runtime = runtimeRef.current;
     const trimmed = query.trim();
-    if (status !== "ready" || !runtime || !trimmed) {
+    if (status !== "ready" || !trimmed) {
       setResults([]);
       return;
     }
-    let active = true;
-    const timer = setTimeout(async () => {
-      const hits = await runtime.search(trimmed);
-      if (active) setResults(hits);
+    const timer = setTimeout(() => {
+      setResults(searchDocuments(documentsRef.current, trimmed));
     }, 120);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [query, status]);
 
   const unavailable = status === "unavailable";
@@ -73,7 +53,7 @@ export function SearchBox() {
       <input
         type="search"
         className="search-input"
-        placeholder={unavailable ? "検索はビルド後に利用できます" : "記事を検索..."}
+        placeholder={unavailable ? "検索は準備中です" : "記事を検索..."}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         disabled={unavailable}
