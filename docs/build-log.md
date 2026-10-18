@@ -1305,3 +1305,41 @@ Phase 0 のローカル確認を最後まで進めた。確認手順は `docs/vo
   - 画像の WebP 変換、GitHub OAuth、既存 `src/markdown` レンダラーの確認（変わらず）。
 - **方針への影響**: 計画を変える必要のある結果は出ていない。セッションの置き場所（D1 か Durable Object）が、
   認証の実装時に決める項目として増えた。
+
+### 2026-10-18 — Spike のパート B（本番の Cloudflare で確認）
+
+Phase 0 の本番確認を、無料プランのまま行った。手順は `docs/void-spike-verification.md` のパート B、調べたことの詳細は
+`docs/void-spike-qa.md`。確認後に、Worker・D1・R2・KV を消した。
+
+- **動いたこと（本番）**: Pages mode の SSR、API ルート、D1、R2、KV、Better Auth（サインアップ → セッション付きの保護ルート
+  → サインアウトで 401）、セッションの Durable Object への保存、ISR のキャッシュ（MISS → HIT → `revalidate` → MISS）、
+  shiki、WASM 版 Takumi による日本語フォント入りの OG 画像（現行の `OgCard` とほぼ同じ見た目）。
+  Worker のサイズは、WASM（圧縮後 1.74MB）と日本語フォント（5.3MB）を含めて、上限（無料・有料とも非圧縮で 64 MiB）に
+  収まった。以前のメモにあった「圧縮後 3MB / 10MB」は古い情報で誤りだった。
+- **CPU 時間は無料プランの 10ms を大きく超える**: Metrics で P50 57.84ms、P90 105ms、P99 117ms、ピークは P999 で約 340ms。
+  数十回の呼び出しでは `Error 1102` にならなかったが、公式ドキュメントでは、継続して超えると打ち切られる。
+  レスポンスの `ms` は本番では 0 になる（`Date.now()` が I/O のあとにしか進まない）ので、計測は Metrics で行う。
+- **方針**: 重い処理（shiki、OG 画像）は、リクエストごとではなく公開時に 1 回だけ行う（計画のとおり）。その処理は公開の API
+  の中で動くので、有料プラン（CPU 時間の既定が 30 秒、月 $5）を前提にする。有料プランでの動作は未確認で、ドキュメント上の
+  値にもとづく。
+- **ハマりどころ**:
+  - R2 は、アカウントで最初に有効化する操作が要る。していないと `Please enable R2 through the Cloudflare Dashboard.`（403）
+    でプロビジョニングが止まる。購読の画面の Total Due Now は $0.00。
+  - **`void db generate` は、失敗しても `Migration generation complete.` と出す。** `secondaryStorage` を使うと、
+    `session` と `verification` のテーブルが作られず、残る索引が `account.userId` だけになり、別テーブルの `id` を参照する列は
+    `index` の import を追加しない Void 1.1.11 のバグで、`.void/better-auth-schema.ts` が `index is not defined` になる。
+    `auth.ts` に `verification: { storeInDatabase: true }` を足して避けた。`db/migrations/` に `.sql` ができたかで見分ける。
+  - 2 回目のデプロイが `100405`（`All versions … must declare identical exports`）で止まった。既存の Durable Object を持つ
+    Worker を、既定の `staged`（0% のトラフィックで確認）で置けないため。`--atomic` を付けて通した。
+  - 本番の D1 は空で、`disableSignUp: true` のままではユーザーを作れない。サインアップを開けてデプロイ → 強いパスワードで
+    サインアップ → 閉じて再デプロイ、の順で作った。本番では、GitHub ログインで自分の ID だけを許可する形にして、この開閉を
+    避けたい。
+  - Void の `project delete` は Cloudflare のリソースを消さない。ダッシュボードで消す。
+- **未確認（次に確認する）**:
+  - 有料プランでの shiki・OG の動作（CPU 時間の上限が緩むこと）。
+  - GitHub OAuth のログインと、自分の ID だけを許可する制限。
+  - 画像の WebP 変換、OG 画像の絵文字（現行は `emoji: "twemoji"`）、既存 `src/markdown` レンダラーの確認（自作パーサーの完成後）。
+  - ルートごとの CPU 時間（Metrics は全リクエストの合計だった）。
+- **方針への影響**: Phase 0 の前提（Workers の上で D1・R2・認証・ISR・shiki・OG が動く）は成り立った。計画を変える必要は
+  ないが、公開の処理を有料プラン前提にすること、セッションの置き場所（D1 か Durable Object）を Phase 5 で決めること、
+  本番のユーザー作成を GitHub OAuth にすることが、実装時の注意点として増えた。

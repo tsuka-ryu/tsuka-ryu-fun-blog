@@ -650,11 +650,18 @@ curl -s -D - "$URL/" -H 'Accept: text/html' | grep -i -E '^HTTP|x-isr-cache|<h1'
 ローカルの `wrangler` では I/O がなくても進むので、ローカルの値（shiki 94ms、OG 21〜59ms）とは比べられない。
 本番の CPU 時間は、ダッシュボードの Workers & Pages → Worker → Metrics で見る。
 
+Metrics の結果（過去 30 分、全リクエストの合計）: P50 57.84ms、P90 105ms、P99・P999 117ms。繰り返し叩いた時間帯の
+ピークは、P50 が約 225ms、P999 が約 340ms。無料プランの 10ms を 10〜30 倍以上超えている。数十回の呼び出しでは
+`Error 1102` にならなかったが、公式ドキュメントには、たまに超えるぶんの余裕はあるが、継続して超えると打ち切られる
+とある。このグラフは全リクエストの合計なので、ルートごとの CPU 時間は分からない（Observability のタブにある
+呼び出しごとのログに出るかは未確認）。有料プランでの確認は、今回していない。
+
 ### B5. 片付ける
 
 確認が済んだら、不要な課金や公開が残らないように消す。Cloudflare ダッシュボードで次を削除する。
 
-- Workers & Pages → Spike の Worker
+- Workers & Pages → Spike の Worker。Void の `void project delete` は Cloudflare のリソースを消さないので
+  （`docs/integrations/cloudflare.md`）、ダッシュボードで消す
 - Storage & Databases → D1 → Spike のデータベース
 - Storage & Databases → R2 → Spike のバケット
 - Storage & Databases → KV → Spike の namespace（`KV` と、ISR のキャッシュ用の `ISR_CACHE` の 2 つ）
