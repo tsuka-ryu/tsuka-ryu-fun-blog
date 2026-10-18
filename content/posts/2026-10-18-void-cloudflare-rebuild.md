@@ -214,20 +214,12 @@ async function publish(postId: number) {
 
   // 1. 検証。ここで失敗したら、何も書かない
   const parsed = parse(draft.body);
-  const diagnostics = [
-    ...validateFrontmatter(draft),
-    ...lint(parsed),
-    ...checkUrls(parsed),
-  ];
-  if (diagnostics.some((d) => d.severity === "error"))
-    throw new PublishError(diagnostics);
+  const diagnostics = [...validateFrontmatter(draft), ...lint(parsed), ...checkUrls(parsed)];
+  if (diagnostics.some((d) => d.severity === "error")) throw new PublishError(diagnostics);
   const rendered = await highlightAll(parsed); // ADR 6: コードのトークン化は公開時に済ませる
 
   // 2. R2: slug をキーにした上書き。何度書いても同じ結果になる
-  await storage.put(
-    `published/posts/${draft.slug}.json`,
-    serialize({ meta, ast: rendered, toc }),
-  );
+  await storage.put(`published/posts/${draft.slug}.json`, serialize({ meta, ast: rendered, toc }));
   await storage.put(`published/posts/${draft.slug}.md`, toMarkdownFile(draft));
   await storage.put(`published/og/${draft.slug}.png`, await renderOg(draft)); // 失敗しても公開は止めない (ADR 9)
   await rebuildIndexes(); // index.json / search-index.json / feed.xml / sitemap.xml
@@ -235,7 +227,12 @@ async function publish(postId: number) {
   // 3. D1: 公開版を記録して posts を更新する。db.batch で 1 往復、文は連続して実行される
   await db.batch([
     db.insert(postRevisions).values({ ...draft, kind: "published" }),
-    db.update(posts).set({/* 公開中の列 */}).where(eq(posts.id, postId)),
+    db
+      .update(posts)
+      .set({
+        /* 公開中の列 */
+      })
+      .where(eq(posts.id, postId)),
   ]);
 
   // 4. キャッシュを無効化する
@@ -381,10 +378,7 @@ import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 const hl = await createHighlighterCore({
-  themes: [
-    import("shiki/themes/github-light.mjs"),
-    import("shiki/themes/github-dark.mjs"),
-  ],
+  themes: [import("shiki/themes/github-light.mjs"), import("shiki/themes/github-dark.mjs")],
   langs: [import("shiki/langs/typescript.mjs"), import("shiki/langs/rust.mjs")],
   engine: createJavaScriptRegexEngine(), // Oniguruma の WASM を使わない
 });
