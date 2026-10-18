@@ -9,17 +9,17 @@
 
 最終更新: 2026-10-18
 
-| フェーズ                    | 状態                                  | メモ                                                                                 |
-| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------ |
-| 0 検証 Spike                | 🟡 ローカルは完了。本番は未確認       | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md` |
-| 1 移行前 VRT のベースライン | ✅ 完了（`main` へ PR 中）            | 使い方は `vrt/README.md`。マージすると、移行前の状態が `main` に残る                 |
-| 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中）    | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層      |
-| 3 土台（Void 導入）         | ✅ 完了（`phase-3-foundation` の PR） | Void 化・FUNSTACK 撤去・D1 スキーマ。VRT は 2 ページ以外すべて移行前のまま一致       |
-| 4〜9                        | ⬜ 未着手                             | 「フェーズ」の節を参照                                                               |
+| フェーズ                    | 状態                                                           | メモ                                                                                                                       |
+| --------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 0 検証 Spike                | 🟡 ほぼ完了。残りは GitHub OAuth・画像変換・有料プランでの確認 | 結果は `docs/build-log.md`、再現・本番確認の手順は `docs/void-spike-verification.md`、疑問と答えは `docs/void-spike-qa.md` |
+| 1 移行前 VRT のベースライン | ✅ 完了（`main` にマージ済み）                                 | 使い方は `vrt/README.md`。移行前の状態が `main` に残っている                                                               |
+| 2 自作 Markdown パーサー    | ✅ 完了（`void-rebuild` へ PR 中）                             | `src/markdown/parse/`。サイトには未接続（Phase 3 で繋ぐ）。スタックの一番下の層                                            |
+| 3 土台（Void 導入）         | ✅ 完了（`phase-3-foundation` の PR）                          | Void 化・FUNSTACK 撤去・D1 スキーマ。VRT は 2 ページ以外すべて移行前のまま一致                                             |
+| 4〜9                        | ⬜ 未着手                                                      | 「フェーズ」の節を参照                                                                                                     |
 
 **人間にしかできないこと**（Cloudflare アカウントが要る）:
 
-- `docs/void-spike-verification.md` のパート B（本番デプロイ、ISR のキャッシュ、CPU 時間・メモリ・スクリプトサイズ）を実行し、結果を `docs/build-log.md` に追記する
+- Workers Paid（月 $5）に加入して、shiki と OG が有料プランで問題なく動くか確認する（任意。ドキュメント上は CPU 時間の上限が既定 30 秒）
 - GitHub OAuth App の作成（Phase 5 の前まで）
 - 本番ドメイン `tsuka-ryu.dev` の DNS 切り替え（Phase 8）
 
@@ -206,10 +206,10 @@ main                        ← 本番（Vercel）。切り替え（Phase 8）�
 
 ### Phase 0: 検証 Spike（捨てる前提の実験）
 
-- [ ] 参考記事と Void docs の通りに最小の Void アプリを作り、Workers に `void deploy` できる（**ローカル（workerd）での起動は確認済み**。`void deploy` は Cloudflare アカウントがないクラウドセッションでは未確認。Node 要件は 24.21.0 以上で、`mise.toml` の 24.16.0 から上げる必要がある）
-- [ ] Pages mode で SSR + `revalidate({ paths })` による即時無効化が動く（**SSR・loader・`revalidate({ paths })` の呼び出しはローカルで確認済み**。ISR のキャッシュ自体はローカルでは効かず未確認）
-- [ ] D1 / R2 / Better Auth（GitHub OAuth）がローカルと本番で動く（**D1・R2・メール認証 + 保護ルートの 401 はローカルで確認済み**。GitHub OAuth と本番は未確認）
-- [ ] shiki（JS エンジン）、`@takumi-rs/wasm`（OG）、画像変換（WebP / リサイズ）が Workers で動く。CPU 時間・メモリを計測（**shiki と takumi WASM はローカルで確認済み**。画像変換は未確認。本番の CPU 時間・メモリは未計測）
+- [x] 参考記事と Void docs の通りに最小の Void アプリを作り、Workers に `void deploy` できる（**無料プランのまま本番にデプロイできた**。Node 要件は 24.21.0 以上で、`mise.toml` の 24.16.0 から上げる必要がある。R2 は最初に有効化が要る。2 回目以降は `--atomic` が要ることがある）
+- [x] Pages mode で SSR + `revalidate({ paths })` による即時無効化が動く（**本番で確認済み**: MISS → HIT → 無効化 → MISS（新しい時刻））
+- [ ] D1 / R2 / Better Auth（GitHub OAuth）がローカルと本番で動く（**D1・R2・KV・メール認証 + 保護ルートの 401・サインアップを閉じる設定・セッションを Durable Object に置く構成（サインアウトで 401）は、ローカルと本番で確認済み**。GitHub OAuth は未確認）
+- [ ] shiki（JS エンジン）、`@takumi-rs/wasm`（OG）、画像変換（WebP / リサイズ）が Workers で動く。CPU 時間・メモリを計測（**shiki と takumi WASM は本番（無料プラン）でも動いた。現行の `OgCard` を日本語フォント入りでほぼ再現できた。ただし CPU 時間は 1 リクエストあたり約 100〜340ms で、無料プランの 10ms をはるかに超える**。継続すると打ち切られる見込みなので、有料プランが要る。絵文字・画像変換は未確認。Worker のサイズは上限（非圧縮で 64 MiB）に収まった）
 - [ ] 既存 25 記事の使用構文を棚卸し（済: 結果は「自作パーサー」の対応範囲に反映）
 - [x] 結果を `docs/build-log.md` に記録。動かない前提があれば方針を見直してこの計画に反映
 - **完了条件**: 上記がすべて動く、または代替案が決まっている

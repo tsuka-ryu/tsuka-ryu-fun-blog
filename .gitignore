@@ -39,4 +39,5 @@ vrt/.state/
 .void/
 .wrangler/
 .dev.vars
+# Void の生成物
 .void-wrangler.jsonc
