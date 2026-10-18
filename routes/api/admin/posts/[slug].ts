@@ -1,11 +1,20 @@
 import { publishDeps, requireAdmin } from "#site/admin.js";
-import { isValidSlug, saveDraft } from "#site/posts.js";
+import { getPostDetail, isValidSlug, saveDraft } from "#site/posts.js";
 import { deletePost } from "#site/publish.js";
 import { defineHandler } from "void";
 
+// GET /api/admin/posts/:slug  編集画面が開く記事（下書きの内容と、公開の状態）
+export const GET = defineHandler(async (c) => {
+  const denied = await requireAdmin(c);
+  if (denied) return denied;
+
+  const detail = await getPostDetail(publishDeps().db, c.req.param("slug") ?? "");
+  return detail ? c.json(detail) : c.json({ error: "not_found" }, 404);
+});
+
 // PUT /api/admin/posts/:slug  { title, description?, date, tags?, body }  下書きを保存する（自動保存もこれ）
 export const PUT = defineHandler(async (c) => {
-  const denied = requireAdmin(c);
+  const denied = await requireAdmin(c);
   if (denied) return denied;
 
   const slug = c.req.param("slug") ?? "";
@@ -40,7 +49,7 @@ export const PUT = defineHandler(async (c) => {
 
 // DELETE /api/admin/posts/:slug  記事を完全に消す（公開中なら取り下げてから）
 export const DELETE = defineHandler(async (c) => {
-  const denied = requireAdmin(c);
+  const denied = await requireAdmin(c);
   if (denied) return denied;
 
   const result = await deletePost(publishDeps(), c.req.param("slug") ?? "");

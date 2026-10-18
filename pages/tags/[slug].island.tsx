@@ -1,9 +1,12 @@
 import { NotFound } from "#components/NotFound.js";
+import { Page } from "#components/Page.js";
 import { PostCard } from "#components/PostCard.js";
+
+import SearchBox from "../../src/components/SearchBox.tsx" with { island: "load" };
 
 import type { Props } from "./[slug].server.ts";
 
-export default function TagPage({ tag, posts }: Props) {
+function TagPage({ tag, posts }: Props) {
   if (tag === null) return <NotFound />;
 
   return (
@@ -24,5 +27,14 @@ export default function TagPage({ tag, posts }: Props) {
         ))}
       </section>
     </div>
+  );
+}
+
+// ヘッダーの検索欄は、このファイルでアイランドにして渡す（理由は #components/Page.js）。
+export default function TagPageWithFrame(props: React.ComponentProps<typeof TagPage>) {
+  return (
+    <Page search={<SearchBox />}>
+      <TagPage {...props} />
+    </Page>
   );
 }

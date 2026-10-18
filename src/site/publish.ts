@@ -11,6 +11,8 @@ import {
 } from "#site/keys.js";
 import {
   deletePostRow,
+  deleteUnusedTags,
+  findPostsWithTag,
   ensurePublishedRevision,
   getDraft,
   getPostBySlug,
@@ -19,7 +21,12 @@ import {
   markUnpublished,
   revisionToInput,
   type Db,
+  type PostRow,
+  type RevisionRow,
 } from "#site/posts.js";
+import { eq } from "void/db";
+
+import { postRevisions, tags } from "../../db/schema.ts";
 
 import type { Post } from "#content.js";
 import type { Diagnostic } from "#markdown/parse/index.js";
@@ -102,14 +109,24 @@ async function invalidate(deps: PublishDeps, paths: string[]): Promise<string | 
 
 /** 下書きを検証して公開する（すでに公開中なら、公開中の版を下書きの内容で更新する）。 */
 export async function publishPost(deps: PublishDeps, slug: string): Promise<PublishResult> {
-  const { db, store } = deps;
-  const post = await getPostBySlug(db, slug);
+  const post = await getPostBySlug(deps.db, slug);
   if (!post) return { ok: false, reason: "not_found" };
-  const draft = await getDraft(db, post.id);
+  const draft = await getDraft(deps.db, post.id);
   if (!draft) return { ok: false, reason: "no_draft" };
+  return publishFrom(deps, post, draft);
+}
+
+/** `source`（下書き、またはそのコピー）の内容を、公開中の版にする。 */
+async function publishFrom(
+  deps: PublishDeps,
+  post: PostRow,
+  source: RevisionRow,
+): Promise<PublishResult> {
+  const { db, store } = deps;
+  const slug = post.slug;
 
   // 1. 検証（error が 1 つでもあれば、何も書かずに失敗する）。
-  const built = await buildPost(revisionToInput(slug, draft));
+  const built = await buildPost(revisionToInput(slug, source));
   if (!built.ok) return { ok: false, reason: "invalid", errors: built.errors };
 
   const before = await getPublishedRevision(db, post);
@@ -122,14 +139,14 @@ export async function publishPost(deps: PublishDeps, slug: string): Promise<Publ
 
   // 3. D1 を更新する（公開版の履歴を追加し、`posts` と `post_tags` を公開した版に合わせる）。
   const now = deps.now();
-  const revisionId = await ensurePublishedRevision(db, post, draft, now);
-  await markPublished(db, post, revisionId, draft, now);
+  const revisionId = await ensurePublishedRevision(db, post, source, now);
+  await markPublished(db, post, revisionId, source, now);
 
   // 4. 一覧・feed・sitemap・検索索引を作り直し、5. キャッシュを無効化する。
   await rebuildAggregates(deps);
   const revalidateError = await invalidate(
     deps,
-    affectedPaths(slug, [...revisionTags(draft), ...(before ? revisionTags(before) : [])]),
+    affectedPaths(slug, [...revisionTags(source), ...(before ? revisionTags(before) : [])]),
   );
   return { ok: true, warnings: built.warnings, ...(revalidateError ? { revalidateError } : {}) };
 }
@@ -159,5 +176,57 @@ export async function deletePost(deps: PublishDeps, slug: string): Promise<Publi
   if (!result.ok) return result;
   const post = await getPostBySlug(deps.db, slug);
   if (post) await deletePostRow(deps.db, post);
+  return result;
+}
+
+export interface RenameTagResult {
+  /** タグを付け替えた記事の slug。 */
+  renamed: string[];
+  /** 公開し直しに失敗した記事（検証に通らなくなったなど）。 */
+  failed: Array<{ slug: string; reason: string }>;
+}
+
+/**
+ * タグ名を一括で変更する（表記ゆれの統一にも使う。`to` がすでにあるタグなら、そちらに統合される）。
+ * 下書きと公開中の版の両方のタグを付け替え、公開中の記事は、**公開中の版の内容のまま**（下書きの未公開の変更は
+ * 載せずに）公開し直す。
+ */
+export async function renameTag(
+  deps: PublishDeps,
+  from: string,
+  to: string,
+): Promise<RenameTagResult> {
+  const result: RenameTagResult = { renamed: [], failed: [] };
+  const target = to.trim();
+  if (!target || target === from) return result;
+  const replace = (names: string[]) => [
+    ...new Set(names.map((name) => (name === from ? target : name))),
+  ];
+
+  for (const post of await findPostsWithTag(deps.db, from)) {
+    const draft = await getDraft(deps.db, post.id);
+    if (draft && revisionTags(draft).includes(from)) {
+      await deps.db
+        .update(postRevisions)
+        .set({ tags: JSON.stringify(replace(revisionTags(draft))) })
+        .where(eq(postRevisions.id, draft.id));
+    }
+    const published = await getPublishedRevision(deps.db, post);
+    if (published && revisionTags(published).includes(from)) {
+      const source = { ...published, tags: JSON.stringify(replace(revisionTags(published))) };
+      const outcome = await publishFrom(deps, post, source);
+      if (!outcome.ok) {
+        result.failed.push({ slug: post.slug, reason: outcome.reason });
+        continue;
+      }
+    }
+    result.renamed.push(post.slug);
+  }
+  // 同じスラッグのタグがすでにあると、その表示名が残るので、変更後の表記に揃える。
+  await deps.db
+    .update(tags)
+    .set({ name: target })
+    .where(eq(tags.slug, tagSlug(target)));
+  await deleteUnusedTags(deps.db);
   return result;
 }

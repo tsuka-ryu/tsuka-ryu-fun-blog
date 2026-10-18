@@ -10,56 +10,14 @@ import { buildSearchIndexJson } from "#lib/search.js";
 import { extractToc } from "#lib/toc.js";
 import { attachHighlights } from "#markdown/highlight.js";
 import { parseDocument, type Diagnostic } from "#markdown/parse/index.js";
+import { serializePost, type PostFields } from "#site/serialize.js";
 
 // 記事 1 本を公開用のスナップショットにする処理と、公開済みの記事から一覧・feed・sitemap・検索索引を作る処理。
 // どちらも純粋（I/O なし）で、サーバー（公開関数）とテストから呼ばれる。
 
 /** 編集中の記事の内容（D1 の `post_revisions` の 1 行に相当）。 */
-export interface PostInput {
+export interface PostInput extends PostFields {
   slug: string;
-  title: string;
-  description: string;
-  /** `YYYY-MM-DD`。 */
-  date: string;
-  tags: string[];
-  /** frontmatter を含まない本文の Markdown。 */
-  body: string;
-}
-
-/** YAML の値として、そのまま書いても読み違えられない文字列か。 */
-function isPlainScalar(value: string): boolean {
-  return (
-    /^[^\s"'[\]{}#&*!|>%@`,:?-]/.test(value) &&
-    !/[:#]\s|\s$|\n/.test(value) &&
-    !/^(true|false|null|~)$/.test(value) &&
-    !/^-?\d+(\.\d+)?$/.test(value)
-  );
-}
-
-function yamlString(value: string): string {
-  if (isPlainScalar(value)) return value;
-  const escaped = value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\t/g, "\\t");
-  return `"${escaped}"`;
-}
-
-/**
- * 記事の内容を、frontmatter 付きの Markdown 原文にする（`/posts/<slug>.md` で配信し、バックアップを兼ねる）。
- * 項目の並びは、既存の記事と同じ（title / description / date / tags）。
- */
-export function serializePost(input: Omit<PostInput, "slug">): string {
-  const lines = ["---", `title: ${yamlString(input.title)}`];
-  if (input.description) lines.push(`description: ${yamlString(input.description)}`);
-  lines.push(`date: ${input.date}`);
-  if (input.tags.length > 0) {
-    lines.push(`tags: [${input.tags.map((tag) => yamlString(tag)).join(", ")}]`);
-  }
-  lines.push("---", "");
-  const body = input.body.endsWith("\n") ? input.body : `${input.body}\n`;
-  return `${lines.join("\n")}\n${body}`;
 }
 
 /** 版（`post_revisions` の行）のタグ名の配列。 */

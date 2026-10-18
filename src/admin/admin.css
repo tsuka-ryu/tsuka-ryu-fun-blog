@@ -1,0 +1,418 @@
+/* 管理画面のスタイル。サイトの配色トークン（--paper / --ink / --line / --accent）を使う。 */
+
+.admin {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+  font-size: 0.95rem;
+}
+
+.admin-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.admin-nav a {
+  color: var(--soft);
+}
+
+.admin-nav a:hover {
+  color: var(--accent);
+}
+
+.admin-spacer {
+  flex: 1;
+}
+
+.admin button,
+.admin .admin-button,
+.admin input,
+.admin textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.admin button,
+.admin .admin-button {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-alt);
+  cursor: pointer;
+}
+
+.admin button:hover:not(:disabled),
+.admin .admin-button:hover {
+  border-color: var(--accent);
+}
+
+.admin button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin .admin-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.admin input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.admin input[aria-invalid="true"] {
+  border-color: #b3261e;
+}
+
+/* 記事一覧・タグ一覧 */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-slug {
+  display: block;
+  color: var(--soft);
+  font-family: var(--mono);
+}
+
+.admin-pager {
+  display: flex;
+  gap: 1rem;
+}
+
+.admin-login {
+  text-align: center;
+}
+
+/* エディタ */
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.admin-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+}
+
+.admin-status-published {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.admin-status-changed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-save {
+  color: var(--soft);
+  font-size: 0.85rem;
+}
+
+.admin-save-error {
+  color: #b3261e;
+}
+
+.admin-notice {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.admin-notice-error {
+  border-color: #b3261e;
+  color: #b3261e;
+}
+
+.admin-fields {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-field > span {
+  color: var(--soft);
+  font-size: 0.8rem;
+}
+
+.admin-field small {
+  color: var(--soft);
+}
+
+.admin-field .admin-field-error {
+  color: #b3261e;
+}
+
+.admin-field-wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .admin-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-tags {
+  position: relative;
+}
+
+.admin-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+}
+
+.admin-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.2rem 0.1rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-alt);
+}
+
+.admin-tag-chip-warn {
+  border-color: var(--accent);
+}
+
+.admin-tag-chip button {
+  border: none;
+  background: none;
+  padding: 0 0.3rem;
+}
+
+.admin-tag-warn,
+.admin-tag-hint {
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
+.admin-tag-field {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-tabs button {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+}
+
+.admin-tabs button[aria-selected="true"] {
+  background: var(--paper);
+  border-color: var(--accent);
+}
+
+.admin-tab-count {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--line);
+  font-size: 0.75rem;
+}
+
+.admin-tab-count-error {
+  background: #b3261e;
+  color: #fff;
+}
+
+.admin-main {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding-top: 0.75rem;
+}
+
+.admin-main > div:first-child,
+.admin-main > .admin-preview {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-codemirror {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.admin-codemirror .cm-editor {
+  min-height: 60vh;
+  max-height: 75vh;
+  font-family: var(--mono);
+  font-size: 0.92rem;
+}
+
+.admin-codemirror .cm-editor.cm-focused {
+  outline: 2px solid var(--accent);
+}
+
+.admin-codemirror .cm-scroller {
+  overflow: auto;
+}
+
+/* プレビュー（エラー一覧 + 記事の見た目） */
+.admin-diagnostics {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.admin-diagnostics-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.admin-diagnostics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-diagnostic-jump {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.admin-diagnostic-badge {
+  padding: 0 0.4rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.admin-diagnostic-error .admin-diagnostic-badge {
+  background: #b3261e;
+  color: #fff;
+}
+
+.admin-diagnostic-warning .admin-diagnostic-badge {
+  background: #b26a00;
+  color: #fff;
+}
+
+.admin-diagnostic-pos,
+.admin-diagnostic-rule {
+  color: var(--soft);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+/* 履歴 */
+.admin-history {
+  width: 340px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.admin-history-header,
+.admin-history-diff-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.admin-history h2,
+.admin-history h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.admin-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.admin-history-list button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.admin-history-list button.is-selected {
+  background: var(--bg-alt);
+}
+
+.admin-history-kind-published {
+  color: #2e7d32;
+}
+
+.admin-diff {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  margin: 0.5rem 0 0;
+}
+
+.admin-diff-line {
+  padding: 0 0.3rem;
+}
+
+.admin-diff-add {
+  background: color-mix(in srgb, #2e7d32 20%, transparent);
+}
+
+.admin-diff-remove {
+  background: color-mix(in srgb, #b3261e 20%, transparent);
+}
+
+.admin-codemirror .cm-activeLine {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

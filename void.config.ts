@@ -3,6 +3,8 @@ import { defineConfig } from "void/config";
 
 export default defineConfig({
   worker: { compatibility_date: "2026-02-24" },
+  // ログインは GitHub だけ（認証情報は AUTH_GITHUB_CLIENT_ID / AUTH_GITHUB_CLIENT_SECRET）。
+  auth: { providers: ["github"] },
   routing: {
     // URL の揺れ（末尾スラッシュ・`.html`）は、正規の URL に 301 で寄せる。被リンクや検索エンジンの
     // 評価、RSS の購読を壊さないため。リダイレクトはワーカーに届く前に評価される。

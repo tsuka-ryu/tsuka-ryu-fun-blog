@@ -6,7 +6,7 @@ import { defineHandler } from "void";
 // POST /api/admin/import  { slug, raw }
 // frontmatter 付きの Markdown 原文を、下書きとして保存し、`draft: true` でなければ公開する（冪等）。
 export const POST = defineHandler(async (c) => {
-  const denied = requireAdmin(c);
+  const denied = await requireAdmin(c);
   if (denied) return denied;
 
   const body = (await c.req.json().catch(() => null)) as { slug?: unknown; raw?: unknown } | null;

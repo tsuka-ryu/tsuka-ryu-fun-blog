@@ -70,7 +70,8 @@ pnpm run test:vrt --update         # 差分のあった画像をベースライ�
    まっさらなローカル状態（`vrt/.state/`。開発中の `.void/` には触れない）で `vite preview`
    （Void のビルドを workerd 上で動かす本番に近い配信）をポート 4399 に起動し、`void db migrate` を流して、
    `scripts/import-posts.ts` で `content/posts/*.md` を管理 API から取り込む。終了時に止めて状態を消す。
-   - 管理 API のトークンは、`dist/ssr/.dev.vars` に書く（プレビューはシェルの環境変数を受け取らない）。
+   - 管理 API のトークンと、認証のダミーの認証情報は、`dist/ssr/.dev.vars` に書く（プレビューはシェルの環境変数を
+     受け取らない。認証のミドルウェアは全リクエストで GitHub の認証情報を要求する）。
    - Vitest は `setup` を 2 回呼ぶことがあるので、起動は 1 回だけにしてある。
    - 起動や取り込みに失敗したら、`vrt/.vitest/preview.log` にプレビューの出力が残る。
      `vrt/vitest.config.ts` は、Vitest 自身のパス以外のリクエストをこのプレビューへプロキシする。

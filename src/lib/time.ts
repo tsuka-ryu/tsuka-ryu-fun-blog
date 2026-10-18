@@ -12,6 +12,11 @@ export function nowInTokyo(now?: Date): Temporal.ZonedDateTime {
     : Temporal.Now.zonedDateTimeISO(SITE_TIME_ZONE);
 }
 
+// 今日の日付（YYYY-MM-DD、JST）。新規記事の日付の初期値に使う。
+export function dateInTokyoToday(): string {
+  return nowInTokyo().toPlainDate().toString();
+}
+
 // 記事日付（YYYY-MM-DD）を JST の 0 時の ZonedDateTime にする。
 export function dateInTokyo(date: string): Temporal.ZonedDateTime {
   return Temporal.PlainDate.from(date).toZonedDateTime(SITE_TIME_ZONE);

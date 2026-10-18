@@ -4,7 +4,7 @@ import { defineHandler } from "void";
 
 // POST /api/admin/posts/:slug/publish  下書きを検証して公開する（検証に失敗したら 422 とエラー一覧）
 export const POST = defineHandler(async (c) => {
-  const denied = requireAdmin(c);
+  const denied = await requireAdmin(c);
   if (denied) return denied;
 
   const result = await publishPost(publishDeps(), c.req.param("slug") ?? "");

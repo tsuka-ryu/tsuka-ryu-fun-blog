@@ -222,13 +222,13 @@ describe("unpublishPost / deletePost", () => {
 });
 
 describe("saveDraft", () => {
-  it("同じ記事の自動保存は、下書きの行を上書きするだけで履歴を増やさない", async () => {
+  it("同じ記事の自動保存は、下書きの行を上書きする（履歴は間隔を空けてだけ増える）", async () => {
     const { deps, db } = setup();
     await saveDraft(db, input("auto"), deps.now());
     await saveDraft(db, input("auto", { body: "書き換え" }), deps.now());
-    const revisions = await db.select().from(postRevisions);
-    expect(revisions).toHaveLength(1);
-    expect(revisions[0]!.body).toBe("書き換え");
+    const drafts = (await db.select().from(postRevisions)).filter((r) => r.kind === "draft");
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]!.body).toBe("書き換え");
   });
 
   it("slug に使えない文字は拒否する", async () => {
