@@ -19,6 +19,10 @@ FUNSTACK Static で作る静的技術ブログ。
 ブランチ戦略、運用ルール、受け入れ条件がすべて書いてある。会話や記憶には頼らない。
 
 - Spike の再現手順と本番での確認手順: `docs/void-spike-verification.md`
+- Spike を進める中で出た疑問と答え（ソースで確認したものと推測を区別して書く）: `docs/void-spike-qa.md`。
+  質問が出たら、ここに追記する。料金や上限のような事実は、記憶ではなく公式ドキュメントで確かめてから書く
+- Spike のコードは `~/Documents/vite/void-spike`（GitHub の `tsuka-ryu/void-spike`、private）。このリポジトリには入れない。
+  本番に作った Cloudflare のリソースは、確認後に消してある
 - 判断の経緯（採用理由・却下した代替案・ハマりどころ）: `docs/build-log.md`
 - フェーズが進んだら、同じ PR の中で `docs/void-cloudflare-rebuild.md` のチェックボックスと
   「現在地」を更新する。決めたこと・ハマったことは `docs/build-log.md` にも追記する。
