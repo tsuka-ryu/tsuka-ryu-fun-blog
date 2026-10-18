@@ -30,3 +30,6 @@ pnpm-debug.log*
 # Cache
 .cache/
 *.tsbuildinfo
+
+# VRT の実行時ファイル（失敗時の画像など。ベースラインの __screenshots__ はコミットする）
+vrt/.vitest/

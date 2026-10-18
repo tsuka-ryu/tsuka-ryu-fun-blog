@@ -18,7 +18,8 @@
     "lint:fix": "oxlint --type-aware --fix --fix-suggestions",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "test:vrt": "vitest run --config vrt/vitest.config.ts"
   },
   "dependencies": {
     "@fontsource/zen-kaku-gothic-new": "^5.2.7",
@@ -38,12 +39,15 @@
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "7.0.0-dev.20260612.1",
     "@vitejs/plugin-react": "^6.0.2",
+    "@vitest/browser-playwright": "^5.0.3",
     "lefthook": "^2.1.9",
     "oxfmt": "^0.54.0",
     "oxlint": "^1.69.0",
     "oxlint-tsgolint": "^0.23.0",
+    "playwright": "^1.64.0",
     "takumi-js": "^1.8.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": "24.x",

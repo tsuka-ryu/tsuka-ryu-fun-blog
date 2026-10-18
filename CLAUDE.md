@@ -22,6 +22,8 @@ FUNSTACK Static で作る静的技術ブログ。
 - 判断の経緯（採用理由・却下した代替案・ハマりどころ）: `docs/build-log.md`
 - フェーズが進んだら、同じ PR の中で `docs/void-cloudflare-rebuild.md` のチェックボックスと
   「現在地」を更新する。決めたこと・ハマったことは `docs/build-log.md` にも追記する。
+- 見た目の確認は VRT（`vrt/`、`pnpm run test:vrt`）。使い方は `vrt/README.md`。記事やサイトの見た目を
+  変えたら、`pnpm build` のあとで VRT を回し、意図した差分だけベースラインを更新する。
 - 計画が完了したら、このセクションとディレクトリ構成の節を新構成に合わせて書き換える（Phase 9）。
 
 ## 環境
@@ -46,6 +48,7 @@ FUNSTACK Static で作る静的技術ブログ。
 - `src/lib/` — ユーティリティ（site / format / feed / search / og など）。
 - `src/og/` — OG 画像生成。
 - `src/content.ts` — Markdown 読み込み & ox-content 変換（サーバー）。
+- `vrt/` — ビジュアルリグレッションテスト（Vitest ブラウザモード）とそのベースライン画像。
 - `src/constants.ts` — サイト共通定数（`SITE_TITLE` など）。`lib/site.ts` 相当はここに寄せる。
 
 ## 進め方の方針
