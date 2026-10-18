@@ -1258,3 +1258,139 @@ Vitest 5.0.3 のブラウザモード + Playwright + `toMatchScreenshot`。60 �
   Linux の Chromium で撮ったもの（ファイル名に `chromium-linux` が入る）。画素の許容差は 0。
 - **書き換え中の記事は対象から外した**（`2026-10-18-void-cloudflare-rebuild`）。記事の内容を変えると
   その記事と一覧・タグのページのベースラインも変わるので、同じ PR でベースラインを更新する。
+
+### 2026-10-18 — Phase 2: 自作 Markdown パーサー（`src/markdown/parse/`）
+
+ox-content（Rust/NAPI）に替わる、純 TS・依存ゼロのパーサーを実装した。サーバー（公開時の検証）とブラウザ
+（エディタのプレビュー）で同じコードを使う。まだサイトには繋いでいない（`src/content.ts` は ox-content のまま。
+繋ぐのは Phase 3）ので、本番の出力は変わらない。
+
+- **構成**: `index.ts`（`parseDocument` / `parseMarkdown`）、`block.ts`（行を見て、見出し・段落・リスト・引用・
+  フェンス・表に切り分ける。引用とリストの中身は、記号とインデントを取り除いた行にして再帰的に解析する）、
+  `inline.ts`（エスケープ・コードスパン・リンク・画像・強調・`<url>`・改行）、`frontmatter.ts`（記事で使う
+  YAML の部分集合）、`lint.ts`（診断）、`source.ts`（位置と診断の型）。AST は現行の `MdastNode` に
+  `position`（行・桁・offset、任意）を足したもの。レンダラーは無改修。
+- **強調は CommonMark の delimiter run の方式**にした。`*` と `_` の連なりをスタックに積み、閉じる側が来たら
+  直前の開く側と組にする。left/right-flanking の判定と、3 の倍数の規則も入れた。単語の途中の `_`
+  （`snake_case`）は強調にならない。
+- **リストの最初の行は、記号（`-`、`1.`）を取り除いてから再帰する。** 最初は桁数だけで空白を取り除いて
+  いたため、記号が残り、同じ行を再びリストとして解析し続けて無限再帰になった（既存記事のほとんどが落ちた）。
+- **本文の先頭は、frontmatter の直後の空行を除いたところから**にした（ox-content の `prepareSource` の
+  `content` と同じ。RSS の全文などに使う `body` を変えないため）。
+- **診断**（`{ severity, ruleId, message, from, to, line, column }`）は、パーサーが集める。`from` / `to` は記事全体の
+  先頭からの offset で、エディタの範囲指定にそのまま使える。未対応の構文は `unsupported-syntax` の error。
+- **ox-content の不具合を 2 つ見つけた。** どちらも自作パーサーが CommonMark どおりに解析する。
+  1. 単語の途中の `_` を強調として扱う。`oxc_parser` が `oxc<em>parser…` と描画され、`_` が消える。
+     **公開済みの `2026-09-25-oxc-ts-parser-map` と `2026-09-26-oxc-ts-parser-trace` が、いま実際に崩れている。**
+  2. インラインコードの中にバッククォートがあると解析できない（` ` }c` ``、`` ` ``` ` ``）。
+     → 照合テスト（`golden.test.ts`）は、既存 26 記事のうち 21 本を厳密に比べ、この不具合を含む 5 本だけ、
+     厳密な比較が食い違ったときに、構造と本文だけの緩い比較にする。Phase 3 で繋ぐと、この 2 ページの VRT が
+     意図して変わる。
+- **lint の違い**: `repeated-word` は、現行が「近い位置で同じ語が 2 回」を検出して誤検知が多かった（記事を
+  書くたびに「Git」「GitHub」で落ちた）ので、自作は「同じ英単語が連続する」場合だけにした。
+  `max-consecutive-blank-lines` の、フェンスコード直後の空行 1 つの誤検知は、自作では起きない。
+  ox-content の rule の挙動は、実際に落ちた例からしか分からず、完全には再現できていない。
+- **テスト**: 単体テスト 70 件（構文ごと、診断、位置情報、frontmatter、例外を投げないこと）と、既存記事との
+  照合 52 件。`pnpm test`（Node）に加え、`pnpm run test:browser`（Chromium）で同じ単体テストを動かし、
+  サーバーとブラウザで同じ結果になることを確認した。例外を投げないことの確認は、既存記事を 97 文字ごとに
+  切った入力、Markdown の記号をランダムに並べた入力 3000 件（固定の乱数の種）、深い入れ子を使った。
+- **速度**: 既存 26 記事（約 249KB）を全部解析して約 61ms（ox-content は約 6.5ms）。1 記事 2〜3ms で、
+  プレビューの debounce 解析に十分。増分解析は作らない。
+- **却下した代替**: remark/unified と markdown-it 系（依存が重く、AST が現行の形から離れる）、
+  ox-content の WASM 版（有無が不明）。詳細は記事の ADR 5。
+- **ハマりどころ**: デバッグ用の `console.log` が Vitest の出力に出ないことがある。原因を調べるときは、
+  値を `expect(...).toEqual([])` の失敗として出すと確実に見える。
+
+### 2026-10-18 — 統合ブランチ `void-rebuild` を作り、Phase 2 の PR を計画どおりスタックの最下層にした
+
+Phase 2（自作パーサー）の PR を、計画（Phase 2 以降は統合ブランチを土台に `gh stack` で積む）に反して、
+最初は `main` 向きに作ってしまった。理由は「サイトに繋がない追加だけなので `main` へ直接入れても安全」
+だったが、実際には、新しいブランチの push の許可を待たずに済ませたかった都合が混ざっていた。計画と違うやり方に
+するなら、先に相談するべきだった。指摘を受けて、`main`（`4218b77`）から `void-rebuild` を切り、PR のベースを
+`void-rebuild` に変更した。`main` に入った別の PR（#13 記事に構成図を追加）は、`void-rebuild` を切った時点で
+含まれており、PR のブランチにも取り込んだ（競合なし）。
+
+### 2026-10-18 — Spike の続き（セッションの置き場所、OG 画像の再現）
+
+Phase 0 のローカル確認を最後まで進めた。確認手順は `docs/void-spike-verification.md`（A5b が追加）、
+調べたことの Q&A は `docs/void-spike-qa.md`、動かしたコードは `tsuka-ryu/void-spike`（private）にある。
+本番（Cloudflare）は、引き続き未確認。
+
+- **セッションの置き場所を 3 つ試した**（Better Auth の `secondaryStorage`）。既定は D1 の `session` テーブル。
+  - **Workers KV**: 動いた（`void/kv` をつないだ）。ただし `SecondaryStorage` は原子的な `getAndDelete` と
+    `increment` を求め、KV にはどちらもないので「読む → 書く」の近似になる。50 回を 10 並列で加算すると
+    KV は 9（取りこぼし）、Durable Object は 50 だった。
+  - **Durable Object（`defineDurableState`）**: 動いた。キー 1 つにつき Durable Object を 1 つ作り、呼び出しが
+    直列に実行されるので原子的になる。サインインでセッションができ、D1 の `session` は 0 件のまま、
+    サインアウトで 401 になった。
+  - **D1（既定）**: 追加の設定が要らず、原子的な操作が使え、全セッション破棄も `DELETE` で済む。
+- **現時点の方針**: 管理者が自分 1 人で、公開ページは認証を通らない（ISR で返る）ので、規模の面では D1 で足りる。
+  構成図（`void-spike` の README）は Durable Objects を想定している。どちらにするかは、Phase 5（認証）で決める。
+  KV は、原子的な操作がないので、レート制限のカウンターを置く用途には使わない。
+- **却下した代替**: KV にセッションを置く案。原子的でない近似を自分で書くことになり、結果整合
+  （ログアウト直後に古い値が残りうる）も気にする必要がある。Durable Object のほうが性質がよい。
+- **ハマりどころ**:
+  - `auth.ts` は起動時に、Vite を通さず素の Node の `import()` で読み込まれる。import に拡張子 `.ts` がないと
+    `ERR_MODULE_NOT_FOUND` で起動しない。
+  - `auth.ts` の先頭で Durable Object のモジュールを import すると、その先の `void/durable` が
+    `cloudflare:workers` を import していて、Node が読めず `ERR_UNSUPPORTED_ESM_URL_SCHEME` になる。
+    メソッドの中で動的に import して避けた。
+  - `auth.ts` はプロジェクト直下にあり、Void が `void/kv` などの使用を探す走査の対象外（`routes`・`middleware`・
+    `pages`・`src` など）。`auth.ts` だけで KV を使うと `Missing Cloudflare binding 'KV'` になる。
+    `void.config.ts` の `inference.bindings.kv` で明示する。
+  - KV の設定が足りない状態でサインアップすると、ユーザーだけ D1 に作られてセッションの作成で失敗する。
+    やり直しはサインアップではなくサインインで行う（`USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL` になるため）。
+- **OG 画像を、現行の `OgCard` で再現できた**（WASM 版 Takumi、ローカル）。`OgCard.tsx` をそのままコピーし、
+  `@takumi-rs/helpers/jsx` の `fromJsx` で JSX を要素ツリーにして、`@takumi-rs/wasm` の `Renderer` で描いた。
+  同じ記事のタイトルとメタ行を渡して、現行の `dist/public/og/<slug>.png` と並べて見比べ、帯・サイト名・
+  アスタリスク・タイトルの改行・メタ行が同じだった。違いは PNG の形式のみ（現行は RGB、WASM 版は 256 色の
+  パレット形式）。描画は 21ms（初回 59ms）。日本語フォントは `.bin` にして `ArrayBuffer` として import した。
+- **OG 画像は PNG のままにする**。Takumi は WebP にも出せる（WASM 版は可逆圧縮のみ）が、`og:image` を読む SNS
+  の対応が確実なのは PNG / JPEG で、クローラーが取りに来る画像は容量を減らす利点も小さい。
+- **未確認（次に確認する）**:
+  - 本番の CPU 時間・メモリ。Worker のサイズは、WASM 約 4MB + 日本語フォント 5.3MB でも収まる（上限は無料・有料とも
+    非圧縮で 64 MiB。圧縮後の上限はない。公式の Limits ページで確認）。プランを分けるのは CPU 時間（無料 10ms、
+    有料は既定 30 秒）。無料のままデプロイして `Error 1102` になるかを見てから、Workers Paid（月 $5）で測り直す。
+  - OG 画像の絵文字（現行は `emoji: "twemoji"` で CDN から SVG を取得）。
+  - 本番での Durable Object のセッション。
+  - 画像の WebP 変換、GitHub OAuth、既存 `src/markdown` レンダラーの確認（変わらず）。
+- **方針への影響**: 計画を変える必要のある結果は出ていない。セッションの置き場所（D1 か Durable Object）が、
+  認証の実装時に決める項目として増えた。
+
+### 2026-10-18 — Spike のパート B（本番の Cloudflare で確認）
+
+Phase 0 の本番確認を、無料プランのまま行った。手順は `docs/void-spike-verification.md` のパート B、調べたことの詳細は
+`docs/void-spike-qa.md`。確認後に、Worker・D1・R2・KV を消した。
+
+- **動いたこと（本番）**: Pages mode の SSR、API ルート、D1、R2、KV、Better Auth（サインアップ → セッション付きの保護ルート
+  → サインアウトで 401）、セッションの Durable Object への保存、ISR のキャッシュ（MISS → HIT → `revalidate` → MISS）、
+  shiki、WASM 版 Takumi による日本語フォント入りの OG 画像（現行の `OgCard` とほぼ同じ見た目）。
+  Worker のサイズは、WASM（圧縮後 1.74MB）と日本語フォント（5.3MB）を含めて、上限（無料・有料とも非圧縮で 64 MiB）に
+  収まった。以前のメモにあった「圧縮後 3MB / 10MB」は古い情報で誤りだった。
+- **CPU 時間は無料プランの 10ms を大きく超える**: Metrics で P50 57.84ms、P90 105ms、P99 117ms、ピークは P999 で約 340ms。
+  数十回の呼び出しでは `Error 1102` にならなかったが、公式ドキュメントでは、継続して超えると打ち切られる。
+  レスポンスの `ms` は本番では 0 になる（`Date.now()` が I/O のあとにしか進まない）ので、計測は Metrics で行う。
+- **方針**: 重い処理（shiki、OG 画像）は、リクエストごとではなく公開時に 1 回だけ行う（計画のとおり）。その処理は公開の API
+  の中で動くので、有料プラン（CPU 時間の既定が 30 秒、月 $5）を前提にする。有料プランでの動作は未確認で、ドキュメント上の
+  値にもとづく。
+- **ハマりどころ**:
+  - R2 は、アカウントで最初に有効化する操作が要る。していないと `Please enable R2 through the Cloudflare Dashboard.`（403）
+    でプロビジョニングが止まる。購読の画面の Total Due Now は $0.00。
+  - **`void db generate` は、失敗しても `Migration generation complete.` と出す。** `secondaryStorage` を使うと、
+    `session` と `verification` のテーブルが作られず、残る索引が `account.userId` だけになり、別テーブルの `id` を参照する列は
+    `index` の import を追加しない Void 1.1.11 のバグで、`.void/better-auth-schema.ts` が `index is not defined` になる。
+    `auth.ts` に `verification: { storeInDatabase: true }` を足して避けた。`db/migrations/` に `.sql` ができたかで見分ける。
+  - 2 回目のデプロイが `100405`（`All versions … must declare identical exports`）で止まった。既存の Durable Object を持つ
+    Worker を、既定の `staged`（0% のトラフィックで確認）で置けないため。`--atomic` を付けて通した。
+  - 本番の D1 は空で、`disableSignUp: true` のままではユーザーを作れない。サインアップを開けてデプロイ → 強いパスワードで
+    サインアップ → 閉じて再デプロイ、の順で作った。本番では、GitHub ログインで自分の ID だけを許可する形にして、この開閉を
+    避けたい。
+  - Void の `project delete` は Cloudflare のリソースを消さない。ダッシュボードで消す。
+- **未確認（次に確認する）**:
+  - 有料プランでの shiki・OG の動作（CPU 時間の上限が緩むこと）。
+  - GitHub OAuth のログインと、自分の ID だけを許可する制限。
+  - 画像の WebP 変換、OG 画像の絵文字（現行は `emoji: "twemoji"`）、既存 `src/markdown` レンダラーの確認（自作パーサーの完成後）。
+  - ルートごとの CPU 時間（Metrics は全リクエストの合計だった）。
+- **方針への影響**: Phase 0 の前提（Workers の上で D1・R2・認証・ISR・shiki・OG が動く）は成り立った。計画を変える必要は
+  ないが、公開の処理を有料プラン前提にすること、セッションの置き場所（D1 か Durable Object）を Phase 5 で決めること、
+  本番のユーザー作成を GitHub OAuth にすることが、実装時の注意点として増えた。

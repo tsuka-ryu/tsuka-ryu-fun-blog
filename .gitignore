@@ -33,3 +33,7 @@ pnpm-debug.log*
 
 # VRT の実行時ファイル（失敗時の画像など。ベースラインの __screenshots__ はコミットする）
 vrt/.vitest/
+
+# Void の生成物
+.void/
+.void-wrangler.jsonc

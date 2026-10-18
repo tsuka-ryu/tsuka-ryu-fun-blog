@@ -14,6 +14,8 @@
     "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
     "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:browser": "vitest run --config vrt/vitest.parse.config.ts",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix --fix-suggestions",
     "format": "oxfmt",
