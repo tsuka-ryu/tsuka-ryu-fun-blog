@@ -10,6 +10,11 @@ export const r2Store: ObjectStore = {
     return object ? await object.text() : null;
   },
 
+  async getBytes(key) {
+    const object = await storage.get(key);
+    return object ? new Uint8Array(await object.arrayBuffer()) : null;
+  },
+
   async put(key, body, contentType) {
     await storage.put(key, body, { httpMetadata: { contentType } });
   },

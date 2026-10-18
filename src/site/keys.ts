@@ -12,3 +12,6 @@ export const postJsonKey = (slug: string) => `published/posts/${slug}.json`;
 export const postMarkdownKey = (slug: string) => `published/posts/${slug}.md`;
 
 export const POSTS_PREFIX = "published/posts/";
+
+/** 記事の OG 画像（公開時に作る PNG）。`/og/<slug>.png` で配信する。 */
+export const ogKey = (slug: string) => `published/og/${slug}.png`;

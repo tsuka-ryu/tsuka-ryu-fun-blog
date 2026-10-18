@@ -1,3 +1,4 @@
+import { renderOgLazily } from "#og/lazy.js";
 import { r2Store } from "#site/r2-store.js";
 import { getUser } from "void/auth";
 import { db } from "void/db";
@@ -15,6 +16,7 @@ export function publishDeps(): PublishDeps {
   return {
     db: db as unknown as Db,
     store: r2Store,
+    renderOg: renderOgLazily,
     revalidate: (paths) => revalidate({ paths }),
     now: () => new Date(),
   };

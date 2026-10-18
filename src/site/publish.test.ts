@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 
 import { FakeD1 } from "#site/fake-d1.js";
-import { INDEX_KEY, postJsonKey, postMarkdownKey } from "#site/keys.js";
+import { INDEX_KEY, ogKey, postJsonKey, postMarkdownKey } from "#site/keys.js";
 import { saveDraft, type Db } from "#site/posts.js";
 import { deletePost, publishPost, unpublishPost, type PublishDeps } from "#site/publish.js";
 import { MemoryStore } from "#site/store.js";
@@ -235,5 +235,46 @@ describe("saveDraft", () => {
     const { deps, db } = setup();
     await expect(saveDraft(db, input("../evil"), deps.now())).rejects.toThrow(/slug/);
     await expect(saveDraft(db, input("Upper"), deps.now())).rejects.toThrow(/slug/);
+  });
+});
+
+describe("OG 画像", () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]);
+
+  it("公開すると、タイトルと補助行を渡して描画し、R2 に PNG を置く。取り下げると消える", async () => {
+    const { deps, db, store } = setup();
+    const inputs: unknown[] = [];
+    deps.renderOg = async (input) => {
+      inputs.push(input);
+      return png;
+    };
+    await saveDraft(db, input("og", { title: "OG の記事", tags: ["雑記"] }), deps.now());
+    expect(await publishPost(deps, "og")).toMatchObject({ ok: true });
+    expect(inputs).toEqual([
+      expect.objectContaining({ title: "OG の記事", meta: expect.stringContaining("雑記") }),
+    ]);
+    expect(store.objects.get(ogKey("og"))).toEqual({ body: png, contentType: "image/png" });
+
+    await unpublishPost(deps, "og");
+    expect(store.objects.has(ogKey("og"))).toBe(false);
+  });
+
+  it("描画に失敗しても公開は完了し、理由が警告として返る（OG 画像は置かれない）", async () => {
+    const { deps, db, store } = setup();
+    deps.renderOg = async () => {
+      throw new Error("wasm failed");
+    };
+    await saveDraft(db, input("og2"), deps.now());
+    expect(await publishPost(deps, "og2")).toMatchObject({ ok: true, ogError: "wasm failed" });
+    expect(store.objects.has(postJsonKey("og2"))).toBe(true);
+    expect(store.objects.has(ogKey("og2"))).toBe(false);
+  });
+
+  it("検証に失敗した記事の OG 画像は作らない", async () => {
+    const { deps, db, store } = setup();
+    deps.renderOg = async () => png;
+    await saveDraft(db, input("og3", { date: "bad" }), deps.now());
+    await publishPost(deps, "og3");
+    expect(store.objects.size).toBe(0);
   });
 });

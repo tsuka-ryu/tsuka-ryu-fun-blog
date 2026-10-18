@@ -1,6 +1,6 @@
 import { tagSlug } from "#lib/tag-slug.js";
 import { revisionTags, type PostInput } from "#site/build.js";
-import { and, asc, desc, eq, inArray, sql } from "void/db";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "void/db";
 
 import { postRevisions, posts, postTags, tags } from "../../db/schema.ts";
 
@@ -430,4 +430,9 @@ export async function getPostDetail(db: Db, slug: string): Promise<PostDetail | 
       published.tags !== draft.tags ||
       published.body !== draft.body,
   };
+}
+
+/** 公開中の記事（`posts.publishedRevisionId` がある行）。公開し直しのたびに、全件を読む。 */
+export async function listPublishedPosts(db: Db): Promise<PostRow[]> {
+  return db.select().from(posts).where(isNotNull(posts.publishedRevisionId)).orderBy(asc(posts.id));
 }
