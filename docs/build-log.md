@@ -1139,3 +1139,42 @@ Markdown でも配信すること。方針・決定事項・フェーズ・受�
   Git を正にする運用（ブラウザ管理画面と合わない）、公開側でも D1 を読む構成（コストが読めない）。
 - **進め方**: 統合ブランチを trunk に `gh stack` でフェーズごとの PR を積む。着手前に現行サイトで
   VRT（Vitest browser mode）のベースラインを撮る。
+
+### 2026-10-18 — Void の Spike（ローカル検証）
+
+Void + Cloudflare 作り直し（`docs/void-cloudflare-rebuild.md`）の Phase 0 として、Void 1.1.11 の
+最小アプリ（`pages/` + `routes/` + D1）をリポジトリ外に作り、計画の前提が動くかを確認した。
+Cloudflare アカウントがないクラウドセッションで行ったため、**確認できたのはローカル（workerd）まで**。
+`void deploy` と本番の挙動は未確認。
+
+- **動いたこと**:
+  - Pages mode の SSR と loader、API ルート（`routes/api/*.ts`）。
+  - D1（`void/db` + Drizzle、`void db push`）と R2（`void/storage`）。
+  - Better Auth: メールでのサインアップ → セッション付きで保護ルートが 200、無しで 401。
+  - `void/isr` の `revalidate({ paths })` の呼び出し（エラーなく 200）。
+  - shiki（`shiki/core` + JS 正規表現エンジン、WASM 不要）。初回 249ms。
+  - `@takumi-rs/wasm` での OG 画像（PNG）生成。初回 95ms、1.3KB（フォント指定なしの最小ノード）。
+- **ハマりどころ**:
+  - Node は 24.21.0 以上が必要（`mise.toml` は 24.16.0）。Vite は 8 系でないと `@void/react` が引き込む
+    `@vitejs/plugin-react` が `vite/internal` を解決できず起動しない（Vite 7 だと失敗）。
+  - pnpm のビルドスクリプトは `esbuild` / `sharp` / `workerd` を許可し、`better-sqlite3` は `false` にする。
+  - D1 / R2 の使用を新しく書いたあとは、dev サーバーの再起動が必要（"New D1 binding detected. Restart to apply."）。
+    再起動前は `Missing Cloudflare binding 'DB'` で 500 になる。
+  - `@takumi-rs/wasm/auto` の workerd 用エントリは default export が `WebAssembly.Module`。
+    `init()` を引数なしで呼ぶのではなく、`init({ module_or_path: wasmModule })` と渡す。
+  - **メール+パスワードのサインアップはデフォルトで誰にでも開いている。** 管理画面を自分だけにするには、
+    `auth.ts` で `emailAndPassword: { enabled: true, disableSignUp: true }` のように閉じる
+    （サインアップが `EMAIL_PASSWORD_SIGN_UP_DISABLED` で拒否され、既存ユーザーのサインインは通ることを確認）。
+    GitHub ログインを使う場合も、自分の GitHub ID 以外のサインアップを拒否する仕組み（Better Auth の
+    `databaseHooks` など）が別途要る。
+- **未確認（次に確認する）**:
+  - `void deploy` による Workers へのデプロイ、本番の D1 / R2 / Better Auth。
+  - ISR のキャッシュ動作（ローカルでは効かない）、オンデマンド無効化が実際に反映されること。
+  - 本番 Workers の CPU 時間・メモリ・スクリプトサイズ（`@takumi-rs/wasm` の `.wasm` は約 4MB。圧縮後は未計測）。
+  - 日本語フォント（Noto Sans JP）を渡した OG 画像の生成時間。
+  - 画像の WebP 変換。Void の docs に Cloudflare Images バインディングの記載はなく、ブラウザ側で変換する案か
+    WASM のライブラリを使う案を別途検証する。
+  - GitHub OAuth のログインと、自分の ID だけを許可する制限。
+  - 既存の `src/markdown` レンダラーが Pages mode 上で動くこと（自作パーサーの完成後に確認する）。
+- **方針への影響**: 今のところ、計画を変える必要のある結果は出ていない。サインアップの閉じ方が
+  決定事項（認証）の実装上の注意点として増えた。
