@@ -6,9 +6,11 @@ import {
   POSTS_PREFIX,
   SEARCH_INDEX_KEY,
   SITEMAP_KEY,
+  ogKey,
   postJsonKey,
   postMarkdownKey,
 } from "#site/keys.js";
+import { writeOgImage } from "#site/og-image.js";
 import {
   deletePostRow,
   deleteUnusedTags,
@@ -17,6 +19,7 @@ import {
   getDraft,
   getPostBySlug,
   getPublishedRevision,
+  listPublishedPosts,
   markPublished,
   markUnpublished,
   revisionToInput,
@@ -30,6 +33,7 @@ import { postRevisions, tags } from "../../db/schema.ts";
 
 import type { Post } from "#content.js";
 import type { Diagnostic } from "#markdown/parse/index.js";
+import type { OgCardProps } from "#og/OgCard.js";
 import type { ObjectStore } from "#site/store.js";
 
 // 公開操作。D1（編集用の正）と R2（読者が見るスナップショット）と ISR のキャッシュを、1 つの関数で更新する。
@@ -42,6 +46,11 @@ import type { ObjectStore } from "#site/store.js";
 export interface PublishDeps {
   db: Db;
   store: ObjectStore;
+  /**
+   * 記事の OG 画像（PNG）を描画する。省略すると作らない（テスト用）。失敗しても公開は止めない。
+   * 本番は、WASM 版の Takumi（重いので、必要なときだけ動的に読み込む）。
+   */
+  renderOg?: (input: OgCardProps) => Promise<Uint8Array>;
   /** ISR のキャッシュを無効化する（本番は void/isr の `revalidate({ paths })`）。 */
   revalidate: (paths: string[]) => Promise<void>;
   now: () => Date;
@@ -51,6 +60,8 @@ export type PublishResult =
   | {
       ok: true;
       warnings: Diagnostic[];
+      /** OG 画像を作れなかったとき、その内容。公開は済んでいる（初回のアクセスで作り直される）。 */
+      ogError?: string;
       /** ISR の無効化に失敗したとき、その内容。公開自体は済んでいるので、もう一度実行すれば直る。 */
       revalidateError?: string;
     }
@@ -121,6 +132,7 @@ async function publishFrom(
   deps: PublishDeps,
   post: PostRow,
   source: RevisionRow,
+  { deferAggregates = false }: { deferAggregates?: boolean } = {},
 ): Promise<PublishResult> {
   const { db, store } = deps;
   const slug = post.slug;
@@ -137,18 +149,28 @@ async function publishFrom(
     store.put(postMarkdownKey(slug), built.raw, "text/markdown; charset=utf-8"),
   ]);
 
+  // OG 画像（SNS のカード）。重い処理なので公開時に 1 回だけ作る。失敗しても記事の公開は止めず、警告にする。
+  const ogError = await writeOgImage(deps, slug, built.post.frontmatter);
+
   // 3. D1 を更新する（公開版の履歴を追加し、`posts` と `post_tags` を公開した版に合わせる）。
   const now = deps.now();
   const revisionId = await ensurePublishedRevision(db, post, source, now);
   await markPublished(db, post, revisionId, source, now);
 
-  // 4. 一覧・feed・sitemap・検索索引を作り直し、5. キャッシュを無効化する。
+  // 4. 一覧・feed・sitemap・検索索引を作り直し、5. キャッシュを無効化する（まとめて公開し直すときは、呼び出し側が最後に 1 回行う）。
+  if (deferAggregates)
+    return { ok: true, warnings: built.warnings, ...(ogError ? { ogError } : {}) };
   await rebuildAggregates(deps);
   const revalidateError = await invalidate(
     deps,
     affectedPaths(slug, [...revisionTags(source), ...(before ? revisionTags(before) : [])]),
   );
-  return { ok: true, warnings: built.warnings, ...(revalidateError ? { revalidateError } : {}) };
+  return {
+    ok: true,
+    warnings: built.warnings,
+    ...(ogError ? { ogError } : {}),
+    ...(revalidateError ? { revalidateError } : {}),
+  };
 }
 
 /** 公開を取り下げる。下書きと履歴は残す（もう一度公開できる）。公開していない記事なら何もしない。 */
@@ -159,7 +181,11 @@ export async function unpublishPost(deps: PublishDeps, slug: string): Promise<Pu
   const before = await getPublishedRevision(db, post);
 
   // R2 を先に消す（読者に見えなくなるのはここから）。D1 の更新が失敗しても、もう一度実行すれば直る。
-  await Promise.all([store.delete(postJsonKey(slug)), store.delete(postMarkdownKey(slug))]);
+  await Promise.all([
+    store.delete(postJsonKey(slug)),
+    store.delete(postMarkdownKey(slug)),
+    store.delete(ogKey(slug)),
+  ]);
   if (post.publishedRevisionId !== null) await markUnpublished(db, post, deps.now());
 
   await rebuildAggregates(deps);
@@ -228,5 +254,34 @@ export async function renameTag(
     .set({ name: target })
     .where(eq(tags.slug, tagSlug(target)));
   await deleteUnusedTags(deps.db);
+  return result;
+}
+
+export interface RepublishResult {
+  republished: string[];
+  failed: Array<{ slug: string; reason: string }>;
+}
+
+/**
+ * 公開中の全記事を、**公開中の版の内容のまま**公開し直す（R2 の記事・`.md`・OG 画像・集計物を作り直す）。
+ * パーサーや描画の変更で、保存済みのスナップショット（AST）を作り直したいときと、D1 を戻したあとに使う。
+ * 集計物と ISR は、最後に 1 回だけ作り直す。
+ */
+export async function republishAll(deps: PublishDeps): Promise<RepublishResult> {
+  const result: RepublishResult = { republished: [], failed: [] };
+  const paths = new Set<string>(["/", "/tags", "/feed.xml", "/sitemap.xml", "/search-index.json"]);
+  for (const post of await listPublishedPosts(deps.db)) {
+    const published = await getPublishedRevision(deps.db, post);
+    if (!published) continue;
+    const outcome = await publishFrom(deps, post, published, { deferAggregates: true });
+    if (!outcome.ok) {
+      result.failed.push({ slug: post.slug, reason: outcome.reason });
+      continue;
+    }
+    result.republished.push(post.slug);
+    for (const path of affectedPaths(post.slug, revisionTags(published))) paths.add(path);
+  }
+  await rebuildAggregates(deps);
+  await invalidate(deps, [...paths]);
   return result;
 }

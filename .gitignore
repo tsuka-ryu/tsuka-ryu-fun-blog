@@ -41,3 +41,6 @@ vrt/.state/
 .dev.vars
 # Void の生成物
 .void-wrangler.jsonc
+
+# D1 の書き出し（下書きを含むので、Git に入れない）
+backups/

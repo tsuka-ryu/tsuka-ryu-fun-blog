@@ -1,10 +1,13 @@
 // 公開スナップショットの置き場（本番は R2）。公開関数とテストを、R2 に依存させないための薄い抽象。
-// 扱うのはテキスト（JSON / Markdown / XML）だけ。画像などのバイナリは、R2 を直接使う。
+// 読み書きできるのは、テキスト（JSON / Markdown / XML）と、公開時に作る PNG（OG 画像）。
+// アップロードされた画像は、R2 を直接使う。
 
 export interface ObjectStore {
   /** 存在しなければ null。 */
   get(key: string): Promise<string | null>;
-  put(key: string, body: string, contentType: string): Promise<void>;
+  put(key: string, body: string | Uint8Array, contentType: string): Promise<void>;
+  /** バイト列として読む（OG 画像）。存在しなければ null。 */
+  getBytes(key: string): Promise<Uint8Array | null>;
   /** 存在しないキーを消してもエラーにしない。 */
   delete(key: string): Promise<void>;
   /** prefix で始まるキーを、辞書順で全部返す。 */
@@ -13,7 +16,7 @@ export interface ObjectStore {
 
 /** テスト用のメモリ実装。書き込みの失敗を差し込めるよう、`failOn` を持つ。 */
 export class MemoryStore implements ObjectStore {
-  readonly objects = new Map<string, { body: string; contentType: string }>();
+  readonly objects = new Map<string, { body: string | Uint8Array; contentType: string }>();
   /** true を返したキーへの put / delete を、例外で失敗させる（途中失敗のテスト用）。 */
   failOn: (key: string) => boolean = () => false;
   /** get の呼び出し回数（読み取りの回数を数えるテスト用）。 */
@@ -21,10 +24,17 @@ export class MemoryStore implements ObjectStore {
 
   async get(key: string): Promise<string | null> {
     this.gets += 1;
-    return this.objects.get(key)?.body ?? null;
+    const body = this.objects.get(key)?.body;
+    return typeof body === "string" ? body : null;
   }
 
-  async put(key: string, body: string, contentType: string): Promise<void> {
+  async getBytes(key: string): Promise<Uint8Array | null> {
+    this.gets += 1;
+    const body = this.objects.get(key)?.body;
+    return body instanceof Uint8Array ? body : null;
+  }
+
+  async put(key: string, body: string | Uint8Array, contentType: string): Promise<void> {
     if (this.failOn(key)) throw new Error(`put failed: ${key}`);
     this.objects.set(key, { body, contentType });
   }

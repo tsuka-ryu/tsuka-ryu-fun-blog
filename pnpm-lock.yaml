@@ -231,6 +231,12 @@ importers:
       '@paper-design/shaders-react':
         specifier: 0.0.76
         version: 0.0.76(@types/react@19.2.17)(react@19.2.7)
+      '@takumi-rs/helpers':
+        specifier: ^2.14.0
+        version: 2.14.0(react@19.2.7)
+      '@takumi-rs/wasm':
+        specifier: ^2.14.0
+        version: 2.14.0(csstype@3.2.3)(react@19.2.7)
       '@void/react':
         specifier: 1.1.11
         version: 1.1.11(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(void@1.1.11(@types/node@24.13.2)(arktype@2.2.8)(kysely@0.29.6)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(valibot@1.5.0)(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.3)(wrangler@4.151.1(@cloudflare/workers-types@5.20261018.1)(@types/node@24.13.2))(zod@4.6.5))
@@ -1721,6 +1727,27 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@takumi-rs/helpers@2.14.0':
+    resolution: {integrity: sha512-jFIpuWfBMAxlULx3tEk2V+FCs1CLOMo2/c7h3I2P+eNzMmxwE9TJ/BtwJVghnLlFW1M88QW/ZOY/E7MqXACWJA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      preact: ^10.0.0
+      react: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      preact:
+        optional: true
+      react:
+        optional: true
+
+  '@takumi-rs/wasm@2.14.0':
+    resolution: {integrity: sha512-ncaNPVl9CL47g5eOyQp1kMPzc0GsUDbQdxRURvNBzMpUC2u6ImeMwJN6ZXiu3tqfSVgYZP1aU0Ntkg+q1S2d4g==}
+    engines: {node: '>=20.19'}
+    peerDependencies:
+      csstype: '*'
+    peerDependenciesMeta:
+      csstype:
+        optional: true
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -3942,6 +3969,19 @@ snapshots:
   '@speed-highlight/core@1.2.24': {}
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@takumi-rs/helpers@2.14.0(react@19.2.7)':
+    optionalDependencies:
+      react: 19.2.7
+
+  '@takumi-rs/wasm@2.14.0(csstype@3.2.3)(react@19.2.7)':
+    dependencies:
+      '@takumi-rs/helpers': 2.14.0(react@19.2.7)
+    optionalDependencies:
+      csstype: 3.2.3
+    transitivePeerDependencies:
+      - preact
+      - react
 
   '@tybys/wasm-util@0.10.2':
     dependencies:
