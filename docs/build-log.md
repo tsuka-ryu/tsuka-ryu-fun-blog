@@ -1427,3 +1427,43 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
   人間が見て判断してほしい。**
 - **Node / Vite**: Void は Node 24.21 以上と Vite 8 が必要（Vite 7 だと `@void/react` が動かない）。
   `mise.toml` を 24.22.0 に上げた。
+
+### 2026-10-18 — Phase 4: 公開関数と、R2 から読む公開側
+
+- **データの流れ**: 編集用の正は D1（`posts` / `post_revisions` / `tags` / `post_tags`）、読者が見るのは R2 の
+  スナップショット（`published/posts/<slug>.json`（AST・目次・コードのハイライト込み）、`.md`、`index.json`、
+  `feed.xml`、`sitemap.xml`、`search-index.json`）。公開側のページ・ルート・ミドルウェアは R2 だけを読む。
+  `src/content.ts` は I/O を持たない型と集計（`buildSiteIndex`）だけにし、ビルド時の記事読み込みは消した。
+- **公開関数**（`src/site/publish.ts`）: 検証 → R2 に記事を書く → D1（公開版の履歴・`posts`・`post_tags`）→ 集計物を
+  R2 に作り直す → ISR を無効化。検証に失敗したら何も書かない。どこで失敗しても同じ操作の再実行で収束する
+  （R2 は上書き、公開版の履歴は内容が同じなら再利用、集計物は公開中の全記事から毎回作り直す）。取り下げは R2 を
+  先に消す。ISR の無効化の失敗は公開の失敗にせず、結果に載せる（TTL を 30 日にしているので、再実行で直す）。
+- **テスト**: 本番と同じ Drizzle の D1 ドライバに、`node:sqlite` で作った偽の D1（`src/site/fake-d1.ts`）を渡し、
+  migration の SQL もそのまま流す。R2 はメモリ実装で、書き込みの失敗を差し込める。途中失敗 → 再実行で収束する
+  こと、2 回公開しても履歴が増えないこと、下書きが公開側のどこにも出ないことを確かめた（15 件）。
+  **公開側が D1 に触れないこと**は、公開側の入口から import を辿るテスト（`public-boundary.test.ts`）で守る。
+  `void/db` や `#site/posts` を import する変更を入れると落ちることを、わざと違反を入れて確認した。
+- **`/posts/<slug>.md` はミドルウェアで返す**。`routes/posts/[slug].md.ts` のように、ファイル名の途中にパラメータを
+  置くルートは、Void が展開せず `/posts/[slug].md` という文字列のまま登録される。却下: 別のパス（`/md/<slug>`）に
+  する案（計画の URL と変わる）。
+- **管理 API**（`/api/admin/*`）: 今は `Authorization: Bearer <ADMIN_API_TOKEN>` だけで守る。`ADMIN_API_TOKEN` が
+  未設定なら常に 403 で、本番で設定し忘れても開かない。Phase 5 で、ブラウザのセッションでの認可を足す。
+  取り込みは `scripts/import-posts.ts`（`content/posts/*.md` を `POST /api/admin/import` へ）。slug をキーに上書きで、
+  何度流しても重複せず、`draft: true` は下書きとして入る。`.md` の frontmatter は D1 の項目から作り直すので、
+  書式（引用符など）が元と少し変わる。
+- **URL の揺れの 301** は `void.config.ts` の `routing.redirects`。リダイレクトはワーカーの前で評価されるため、
+  ローカルのプレビューでは効かない。本番で確認する。
+- **VRT**: 公開ページが R2 を読むので、撮る前にまっさらなローカル状態（`vrt/.state`）で `vite preview` を起動し、
+  migration を流して記事を取り込む。60 件すべて、移行前（FUNSTACK）のベースラインと一致した（Phase 3 で更新した
+  2 枚を含む）。ハマりどころ:
+  - **環境変数はビルド時に `dist/ssr/.dev.vars` へ写されるだけ**で、プレビューにシェルの環境変数は渡らない。
+    VRT は、このファイルにトークンを書く（開発者の `.env` には触れない）。
+  - **`void db` コマンドは、プレビューが起動して保存先（`.void/local-d1.json`）を記録したあとでないと、
+    `VOID_PERSIST_TO` に従わない**。起動 → migrate → 取り込みの順にする。
+  - **Vitest が `globalSetup` の `setup` を、同じプロセスで数秒おきに 2 回呼ぶ**。2 回目が状態ディレクトリを消して
+    起動中のサーバーを壊し（`SQLITE_CANTOPEN`）、さらに `setup` が失敗すると `teardown` が呼ばれず、ポートを
+    掴んだサーバーが残った。`setup` を冪等にし、失敗時にも止めるようにした。
+  - プレビューの出力は `vrt/.vitest/preview.log` に残す（取り込みが失敗したときに、末尾をエラーに添える）。
+- **有料プランの前提**: 公開時に shiki と集計物の作り直し（全記事の JSON を読む）を同じリクエストで行うので、
+  CPU 時間は公開の API が一番大きい。Spike の結果（無料プランの 10ms では足りない）どおり、有料プランを前提にする。
+  記事が増えて重くなったら、集計物の作り直しを記事単位の差分更新にする（今は全件読み直し）。

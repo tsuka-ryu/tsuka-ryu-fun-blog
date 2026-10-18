@@ -1,5 +1,13 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 // VRT の対象のサイト（Void でビルドした本番の出力）を、`vite preview` で起動する。
@@ -14,6 +22,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const stateDir = path.join(import.meta.dirname, ".state");
 const devVarsFile = path.join(root, "dist/ssr/.dev.vars");
 const token = "vrt-token";
+const logFile = path.join(import.meta.dirname, ".vitest/preview.log");
 
 let server: ChildProcess | undefined;
 
@@ -47,9 +56,37 @@ function writeAdminToken(): void {
   writeFileSync(devVarsFile, `${[...kept, `ADMIN_API_TOKEN=${token}`].join("\n")}\n`);
 }
 
-export async function setup() {
+function stopServer() {
+  if (!server?.pid) return;
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch {
+    // すでに終了している。
+  }
+  server = undefined;
+}
+
+let starting: Promise<void> | undefined;
+
+/**
+ * Vitest は、ブラウザモードの起動の途中で `setup` を 2 回呼ぶことがある（同じプロセスで数秒おき）。
+ * 2 回目が状態を消してサーバーを壊さないよう、最初の起動の結果を使い回す。
+ */
+export function setup(): Promise<void> {
+  starting ??= startSite().catch((error: unknown) => {
+    // setup が失敗すると teardown は呼ばれないので、ここで止めないとポートを掴んだまま残る。
+    stopServer();
+    starting = undefined;
+    throw error;
+  });
+  return starting;
+}
+
+async function startSite() {
   rmSync(stateDir, { recursive: true, force: true });
   writeAdminToken();
+  mkdirSync(path.dirname(logFile), { recursive: true });
+  const logFd = openSync(logFile, "w");
   const env = { ...process.env, VOID_PERSIST_TO: stateDir, ADMIN_API_TOKEN: token };
   server = spawn(
     "pnpm",
@@ -57,11 +94,13 @@ export async function setup() {
     {
       cwd: root,
       env,
-      stdio: "ignore",
+      // 起動に失敗したときに原因が追えるよう、出力をファイルに残す。
+      stdio: ["ignore", logFd, logFd],
       // pnpm の子プロセスごと止められるよう、独立したプロセスグループにする。
       detached: true,
     },
   );
+  closeSync(logFd);
   await waitUntilReady(`http://localhost:${PREVIEW_PORT}/`, 60_000);
 
   // プレビューが起動して保存先を記録したあとに、migration を流し、記事を取り込む。
@@ -81,6 +120,7 @@ export async function setup() {
 }
 
 export async function teardown() {
-  if (server?.pid) process.kill(-server.pid, "SIGTERM");
+  starting = undefined;
+  stopServer();
   rmSync(stateDir, { recursive: true, force: true });
 }
