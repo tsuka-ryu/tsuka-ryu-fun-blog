@@ -1343,3 +1343,18 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
 - **方針への影響**: Phase 0 の前提（Workers の上で D1・R2・認証・ISR・shiki・OG が動く）は成り立った。計画を変える必要は
   ないが、公開の処理を有料プラン前提にすること、セッションの置き場所（D1 か Durable Object）を Phase 5 で決めること、
   本番のユーザー作成を GitHub OAuth にすることが、実装時の注意点として増えた。
+
+### 2026-10-27 — AI・クローラー向けに記事の Markdown 版を配信する
+
+- **症状**: AI にサイトを読ませると、記事本文が取れない。
+- **原因**: 各ページを `defer()` にしているため、SSR の HTML は `<main>` の中に Suspense のプレースホルダ
+  （`<template id="B:0">`）だけを置き、本文は文書末尾の `<div hidden id="S:0">` に入れて、インライン JS（`$RC`）で
+  差し込む。本文は HTML に入っているが、JS を実行しないクローラーや、`<main>`・記事領域を抽出するツールには空に見える。
+  FUNSTACK 固有のバグではなく、`defer()` と React ストリーミングの組み合わせの性質。
+- **採用**: ビルド時に `posts/<slug>.md`（タイトル・日付・タグ・元 URL を冒頭に付けた素の Markdown）と `llms.txt`
+  （記事一覧）を `feed.xml` と並べて出力し、記事の `<head>` に `<link rel="alternate" type="text/markdown">` を足した。
+  実装は `src/lib/markdown.ts` と `src/app/build.ts`。Void + Cloudflare 版で予定している Markdown 配信と同じ方向。
+- **却下した代替案**: `defer()` を外して本文を同期レンダリングにする案。HTML だけで読めるようになるが、記事ごとの
+  RSC ペイロード分割を捨てることになり、バンドルも増える。まず Markdown 配信で足りるかを見る。
+- **未確認**: 本番（Vercel）での `.md` の Content-Type。確認してから必要なら `vercel.json` の headers で
+  `text/markdown; charset=utf-8` を指定する。

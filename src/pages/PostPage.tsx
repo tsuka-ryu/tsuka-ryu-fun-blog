@@ -24,6 +24,8 @@ export function PostPage({ slug }: { slug: string }) {
           image={`/og/${post.slug}.png`}
           type="article"
         />
+        {/* 本文が空に見える JS 非実行のクローラー向けに、素の Markdown 版を案内する。 */}
+        <link rel="alternate" type="text/markdown" href={`/posts/${post.slug}.md`} />
         <header className="post-header">
           <h1 className="post-title">{post.frontmatter.title}</h1>
           <p className="post-meta">
