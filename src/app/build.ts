@@ -1,7 +1,8 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { buildRssFeed, buildSitemap } from "#lib/feed.js";
+import { buildLlmsTxt, buildPostMarkdowns } from "#lib/markdown.js";
 import { generateOgImages } from "#lib/og.js";
 import { buildSearchIndexJson, buildSearchRuntimeJs } from "#lib/search.js";
 
@@ -9,8 +10,19 @@ import type { BuildEntryFunction } from "@funstack/static/server";
 
 // カスタム build entry。既定の静的ビルド（build()）を走らせつつ、生成された HTML の
 // 隣に追加成果物を並列で書き出す: feed.xml(RSS) / sitemap.xml / 検索インデックス +
-// クライアントランタイム / 記事ごとの OG 画像。build() と並列に走らせて
+// クライアントランタイム / 記事ごとの OG 画像 / 記事ごとの Markdown と llms.txt。build() と並列に走らせて
 // クリティカルパスから外す。
+// 記事ごとの素の Markdown を posts/<slug>.md に書き出す（HTML は posts/<slug>.html）。
+async function writePostMarkdowns(outDir: string): Promise<void> {
+  const dir = path.join(outDir, "posts");
+  await mkdir(dir, { recursive: true });
+  await Promise.all(
+    buildPostMarkdowns().map(({ slug, markdown }) =>
+      writeFile(path.join(dir, `${slug}.md`), markdown),
+    ),
+  );
+}
+
 export default (async ({ build, outDir }) => {
   await Promise.all([
     build(),
@@ -19,5 +31,7 @@ export default (async ({ build, outDir }) => {
     writeFile(path.join(outDir, "search-index.json"), buildSearchIndexJson()),
     writeFile(path.join(outDir, "search.js"), buildSearchRuntimeJs()),
     generateOgImages(outDir),
+    writeFile(path.join(outDir, "llms.txt"), buildLlmsTxt()),
+    writePostMarkdowns(outDir),
   ]);
 }) satisfies BuildEntryFunction;
