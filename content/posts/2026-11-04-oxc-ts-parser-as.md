@@ -1,9 +1,8 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第5回 1 + 1 as number / 2 事件
 description: 型を消すと値が変わってしまう1行をきっかけに、TypeScript 7.0は as の後ろに強い演算子を続ける書き方をエラーにしました。その判定がoxcのパーサーのどこに入ったのかと、エラーがなぜ「セミコロンが無い」という形で出るのかを読みます。
-date: 2026-10-04
+date: 2026-11-04
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
-draft: true
 ---
 
 この記事では、`1 + 1 as number / 2` という1行が TypeScript 7.0 でエラーになった経緯と、同じ変更を取り込んだ oxc のパーサーのコードを読みます。
@@ -318,7 +317,7 @@ Ryan Cavanaugh さんのまとめには、さっきの1行のあとにこう続�
 
 その PR が [microsoft/typescript-go#4192](https://github.com/microsoft/typescript-go/pull/4192)「Stop parsing constructs that make it impossible to erase `as`/`satisfies`」で、Go 版の tsc (typescript-go) に入りました。
 
-実際の判定は、Anders さんの言葉より少し緩く作られています。比べる相手は `as` 自身の強さではなく、`as` の手前で左辺を作った演算子の強さです。だから `1 * 1 as number + 2` は、`+` が関係演算子より強くても通ります。`as` を消したときに意味が変わるかどうか、だけを見ているわけです。
+Anders さんの言葉どおりなら、`as` のあとに `+` や `*` が来たらすべてエラーのはずです。ただ、実際の判定はもう少し狭く、比べる相手は `as` 自身の強さではなく、`as` の手前で左辺を作った演算子の強さです。`1 * 1 as number + 2` は、手前の `*` よりあとの `+` のほうが弱いので通ります。`as number` を消しても `1 * 1 + 2` で、どちらも `(1 * 1) + 2` になるからです。`1 + 1 as number / 2` は、手前の `+` よりあとの `/` のほうが強く、消すと `1 + (1 / 2)` に変わるので止めます。
 
 Go 版は、2026年6月18日に npm に出た `typescript@7.0.1-rc` から `typescript` パッケージの7.0として配られています。Claude に `const n = 1 + 1 as number / 2;` を3つのバージョンで試してもらった結果がこちらです。`erasableSyntaxOnly` は付けていません。
 
@@ -341,10 +340,8 @@ oxc に同じ変更が入ったのは [oxc-project/oxc#22986](https://github.com
 | 2026-06-04 21:14 | typescript-go#4192 がマージされる                        |
 | 2026-06-05 12:38 | oxc#22986 が出る                                         |
 | 2026-06-05 13:15 | oxc#22986 がマージされる                                 |
-| 2026-06-08       | oxc v0.135.0 のリリース (変更履歴に #22986 が載っている) |
-| 2026-06-18       | npm に typescript 7.0.1-rc が出る                        |
 
-Go 版のマージから oxc のマージまで、約16時間です。変更は10ファイルですが、パーサー本体は `js/expression.rs` に17行足しただけで、残りはテストとスナップショットでした。
+Go 版のマージから oxc のマージまで、約16時間です。変更は10ファイルですが、パーサー本体は `js/expression.rs` に17行足しただけで、残りはテストとスナップショットでした (PR の差分を Claude に確認してもらいました)。
 
 ### 足された17行
 
@@ -376,7 +373,7 @@ Go 版の tsc は、変数に優先順位ではなく左辺のノードそのも
 
 ## エラーは、セミコロンの自動挿入が出す
 
-では、`break` したあとどこでエラーになるのか。足された17行は `break` するだけで、エラーは出しません。`break` すると、`/ 2` を読まないまま `(1 + 1) as number` が返るだけです。PR の本文にも、強い演算子を宙に浮かせて、パースエラーとして表に出す、と書いてあります。
+では、`break` したあとどこでエラーになるのか。足された17行は `break` するだけで、エラーは出しません。`break` すると、`/ 2` を読まないまま `(1 + 1) as number` が返るだけです。PR の本文にも、強い演算子を宙に浮かせて、パースエラーとして表に出す、と書いてあります (Claude に確認してもらいました)。
 
 式を読み終えて文の側に戻ると、文の終わりを確かめる `asi` (`cursor.rs:143`) が呼ばれます。式の文なら `parse_expression_statement` (`js/statement.rs:309`)、`const` の宣言なら `parse_variable_declaration` (`js/declaration.rs:79`) が呼び出し元です。
 
@@ -456,7 +453,7 @@ func shouldConsumeBinaryOperator(operator ast.Kind, operatorPrecedence ast.Opera
 
 同じ強さでも `**` なら止める、という1行が足されています。Claude に試してもらうと、7.0.2 はこの行を通し、7.1 の開発版 (`7.1.0-dev.20261002.1`) は `',' expected.` でエラーにしました。
 
-oxc のほうは、`as` の腕の判定が `next_precedence > last_precedence` のままです。この rev で流すと、`2 ** 3 as number ** 2;` は通りました。対応する PR は、oxc のリポジトリでは見つけられませんでした。
+oxc のほうは、`as` の腕の判定が `next_precedence > last_precedence` のままです。この rev で流すと、`2 ** 3 as number ** 2;` は通りました。対応する issue も PR も、Claude に oxc のリポジトリを探してもらいましたが、見つけられませんでした。
 
 ## まとめ
 
