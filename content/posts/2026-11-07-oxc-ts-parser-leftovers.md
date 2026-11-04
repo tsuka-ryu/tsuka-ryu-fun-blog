@@ -1,7 +1,7 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第8回 積み残した型の難所たち
 description: mapped type、tuple type、template literal type、型述語、そしてアロー関数の曖昧性を、oxc のパーサーがどう読み分けているのかを1つずつ見ます。アロー関数では、投機パースとカバー文法の2つのやり方を並べました。
-date: 2026-10-07
+date: 2026-11-07
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 draft: true
 ---
@@ -21,7 +21,7 @@ crates/oxc_parser/src/js/grammar.rs        245行   分割代入のためのカ�
 crates/oxc_parser/src/lib.rs             1,340行   パースの最後に出すエラー
 ```
 
-tuple type、型述語、アロー関数の節では、比較のために tsc (6.0.3) と acorn (8.18.0) も出てきます。この2つの中身と実行結果は、Claude に確認してもらったものです。
+tuple type、型述語、アロー関数の節では、比較のために tsc (6.0.3) と acorn (8.18.0) も出てきます。この2つの中身と実行結果、それに仕様 (ECMAScript) の該当箇所は、Claude に確認してもらったものです。
 
 ## 下準備: oxc の AST を手元で出す
 
@@ -193,9 +193,9 @@ fn is_start_of_mapped_type(&mut self) -> bool {
 }
 ```
 
-上から順に、`{` を食べる、`+readonly` か `-readonly` ならその場で mapped type と決める、`readonly` があれば読み飛ばす、`[` が無くて名前が来たら普通のプロパティなので偽、と進みます。最後に `[` の次のトークン (キーの名前) を食べて、その次が `in` かどうかを見ます。
+上から順に、`{` を食べる、`+` か `-` が来たらその次が `readonly` かどうかで決める、`readonly` があれば読み飛ばす、`[` が無くて名前が来たら普通のプロパティなので偽、と進みます。最後に `[` の次のトークン (キーの名前) を食べて、その次が `in` かどうかを見ます。
 
-つまり、`{ [K in T]: U }` と `{ [k: string]: U }` は、`{` `[` 識別子 の3トークンまで同じ形で、4トークン目が `in` か `:` かで初めて分かれます。逆に言えば、何トークン先を見れば決まるかが最初から分かっているので、投機パースは要らず、固定長の先読みで済んでいます。`lookahead` の中で食べたトークンは判定のあとで全部巻き戻るので、本体の `parse_mapped_type` (`ts/types.rs:640`) は、もう一度 `{` から素直に読み直します。
+つまり、`{ [K in T]: U }` と `{ [k: string]: U }` は、`{` `[` 識別子 の3トークンまで同じ形で、4トークン目が `in` か `:` かで初めて分かれます。`readonly` や `+` `-` が付く形でも、見るトークンの数は数個に収まるので、投機パースは要らず、先読みだけで済んでいます。`lookahead` の中で食べたトークンは判定のあとで全部巻き戻るので、本体の `parse_mapped_type` (`ts/types.rs:640`) は、もう一度 `{` から素直に読み直します。
 
 ## tuple type: rest 要素の重複は、書かれた形で判定する
 
@@ -245,8 +245,6 @@ type C = [...string[], ...readonly number[]];
 ```
 
 この `readonly number[]` は、`readonly` という前置の型演算子のノード (`TSTypeOperator`) が配列型を包んだ形なので、上の `match` の `_ => false` に落ちます。oxc のパーサーはこれを `Parsed Successfully.` で通しました。Claude に tsc 6.0.3 で確認してもらうと、こちらではこの `type C` がエラーになります。同じ TS1265 を型チェッカーが出していて、`...` の後ろの型を解決してから数えるからです。
-
-型を解決しないパーサーが、本来は型の解決が要る検査を、構文の形で近似している、ということになります。
 
 ## template literal type: `}` をテンプレートの続きとして読み直す
 
@@ -517,9 +515,9 @@ declare function g(x: unknown): [is];
 
 ### もとは投機パースだった
 
-この関数は、もとから覗くだけの形だったわけではありません。Claude に oxc の git の履歴を調べてもらうと、2026年4月のコミット (PR [#21532](https://github.com/oxc-project/oxc/pull/21532)、`perf(parser): reduce try_parse usage in favour of lookahead`) で今の形になっていました。それまでの `parse_type_or_type_predicate` は、名前を読んでみて、次が `is` でなければ失敗にする関数を、投機パースの `try_parse` で包んで呼んでいました。
+この関数は、もとから覗くだけの形だったわけではありません。Claude に oxc の git の履歴を調べてもらうと、2026年4月のコミット (PR [#21532](https://github.com/oxc-project/oxc/pull/21532)、`perf(parser): reduce try_parse usage in favour of lookahead`) で今の形になっていました。それまでの `parse_type_or_type_predicate` は、名前を読んでみて、次が `is` でなければ失敗にする関数を、投機パースの `try_parse` (checkpoint を取り、致命的なエラーになったら rewind して `None` を返す関数。この PR で `cursor.rs` から消えました) で包んで呼んでいました。
 
-ここは Claude に確認してもらった内容ですが、tsc 6.0.3 の `parseTypeOrTypePredicate` も `tryParse(parseTypePredicatePrefix)` と投機の形で、Go 版の tsc (typescript-go の `tsc/internal/parser/parser.go:3456`) も `p.mark()` で状態を保存してから名前を読み、`is` が来なければ `p.rewind(state)` で戻す形でした。`x is` の `x` と `is` の間には何も入らないので、1トークン覗けば足ります。oxc は、移植したあとで、この投機を先読みに置き換えたことになります。
+ここは Claude に確認してもらった内容ですが、tsc 6.0.3 の `parseTypeOrTypePredicate` も `tryParse(parseTypePredicatePrefix)` と投機の形で、Go 版の tsc (microsoft/TypeScript の rev `f29aeb9f82` にある `tsc/internal/parser/parser.go:3456`) も `p.mark()` で状態を保存してから名前を読み、`is` が来なければ `p.rewind(state)` で戻す形でした。`x is` の `x` と `is` の間には何も入らないので、1トークン覗けば足ります。oxc は、移植したあとで、この投機を先読みに置き換えたことになります。
 
 ## アロー関数: 投機パースとカバー文法
 
@@ -573,7 +571,7 @@ match third {
 
 JavaScript に `(a:` で始まる式は無いので、`:` が来たら型注釈付きの引数と分かり、その場で `True` です。`(a?:` や `(a?,` も同じで、TypeScript にしかない省略可能な引数の書き方です。一方 `(a,` `(a=` `(a)` は、括弧の式としても引数としても成り立つので `Maybe` になります。ほかに、`(` の次が `[` か `{` の場合 (`([x])` や `({ x })`) も、配列やオブジェクトのリテラルか分割代入の引数か決められないので、`Maybe` を返す腕があります。
 
-TypeScript が構文を足したことで、かえって先読みだけで決まる形が増えています。型注釈の付いた引数は、それだけでアロー関数と確定します。`(` の次が識別子の場合に投機パースに回るのは、`(a,` `(a=` `(a)` の3つだけです。
+型注釈の付いた引数は、それだけでアロー関数と確定します。`(` の次が識別子の場合に投機パースに回るのは、`(a,` `(a=` `(a)` の3つだけです。
 
 ### Maybe のときは引数として読んでみる
 
@@ -700,7 +698,7 @@ fn check_unfinished_errors(&mut self) {
 
 つまり oxc は、アロー関数の引数は投機パースで、分割代入の左辺はカバー文法で、と使い分けています。`({ a = 1 });` は、その両方を通っていたことになります。
 
-なお、アロー関数を投機パースで扱うのは oxc の独自の判断ではありません。Claude に確認してもらったところ、tsc 6.0.3 の `isParenthesizedArrowFunctionExpressionWorker` にも、上の `match third` と同じ分岐が同じコメント付きで並んでいました (3つ目の値の名前は、oxc の `Maybe` に対して tsc は `Unknown`)。oxc はこの判定を tsc から移植しています。
+なお、アロー関数を投機パースで扱うのは oxc の独自の判断ではありません。Claude に確認してもらったところ、tsc 6.0.3 の `isParenthesizedArrowFunctionExpressionWorker` にも、上の `match third` と同じ分岐が並んでいました (3つ目の値の名前は、oxc の `Maybe` に対して tsc は `Unknown`)。配布されている JavaScript にはコメントが残っていないので、コメントは Go 版 (`tsc/internal/parser/parser.go:4322` から) で突き合わせてもらい、oxc の上のコメントと同じ文面でした。
 
 ## まとめ
 
@@ -712,6 +710,6 @@ fn check_unfinished_errors(&mut self) {
 
 ## 連載を終えて
 
-この連載では、oxc のパーサーの中で TypeScript が関わる部分を、型の文法、式への食い込み、AST の形、と順に読んできました。曖昧な場所に出会うたびに、先読みで決めるのか、読んでみて戻るのか、レキサーに読み直しを頼むのか、読んだ木を作り変えるのか、という選択が出てきて、その選び方を追うのがいちばん面白いところでした。この回で連載はおしまいです。最後まで読んでいただき、ありがとうございました。
+この連載では、oxc のパーサーの中で TypeScript が関わる部分を、型の文法、式への食い込み、AST の形、と順に読んできました。曖昧な場所に出会うたびに、先読みで決めるのか、読んでみて戻るのか、レキサーに読み直しを頼むのか、読んだ木を作り変えるのか、という選択が出てきて、その選び方を追ってきました。この回で連載はおしまいです。最後まで読んでいただき、ありがとうございました。
 
 なお、この記事で自分で実際に読んだのは oxc のパーサーだけです。tsc、typescript-go、acorn の中身や、仕様の該当箇所は Claude に確認してもらったものなので、間違っていたら指摘してもらえると助かります。

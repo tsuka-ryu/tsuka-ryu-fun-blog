@@ -1,7 +1,7 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第6回 そのエラー、誰が出してるの?
 description: 間違ったTypeScriptを書いたとき、そのエラーを出すのはパーサーか、セマンティック解析か、型チェッカーか。同じエラーコードがoxcとtscで別の段から出てくる様子を、3つの入力で確かめます。
-date: 2026-10-05
+date: 2026-11-05
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 draft: true
 ---
@@ -64,7 +64,7 @@ done
 
 tsc では、この3段にそれぞれパーサー (parser)、バインダー (binder)、チェッカー (checker) という名前が付いています。たとえば同じブロックで `let x` を2回宣言したときのエラー (TS2451) は、バインダーが出します (Claude に確認してもらいました)。
 
-oxc では、パーサーが `oxc_parser`、セマンティック解析が `oxc_semantic` という別々のクレートです。型チェッカーにあたる段は持っていません。`oxc_type_checker` というクレートはありますが、[冒頭のドキュメントコメント](https://github.com/oxc-project/oxc/blob/1aa5ec11ce0dcbb0da7799e777c2492211908fbb/crates/oxc_type_checker/src/lib.rs#L1-L6)に「It does _not_ type check anything yet.」とあって、今はまだ足場だけです (Claude に確認してもらいました)。
+oxc では、パーサーが `oxc_parser`、セマンティック解析が `oxc_semantic` という別々のクレートです。型チェッカーにあたる段は持っていません。`oxc_type_checker` というクレートはありますが、[冒頭のドキュメントコメント](https://github.com/oxc-project/oxc/blob/1aa5ec11ce0dcbb0da7799e777c2492211908fbb/crates/oxc_type_checker/src/lib.rs#L1-L6)に「It does *not* type check anything yet.」とあって、今はまだ足場だけです (Claude に確認してもらいました)。
 
 もう1つ、TS1265 のような番号について。これはエラーメッセージ1つ1つに振られている番号で、tsc の [`diagnosticMessages.json`](https://github.com/microsoft/TypeScript/blob/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc/internal/diagnostics/diagnosticMessages.json#L858-L861) に、メッセージの文と組で定義されています (Go 版の tsc のもの)。
 
@@ -162,7 +162,7 @@ checker TS1265 A rest element cannot follow another rest element.
 
 ### oxc のパーサーは、書かれた見た目で判定する
 
-oxc の検査は、タプル型を読む `parse_tuple_type` (`ts/types.rs:967`) の中にあります。要素を1つ読むたびに呼ばれるクロージャの、rest 要素を数える部分がこちらです (クロージャの外側と、このあとに続く省略可能な要素の並び順の検査は省きました)。
+oxc の検査は、タプル型を読む `parse_tuple_type` (`ts/types.rs:967`) の中にあります。要素を1つ読むたびに呼ばれるクロージャの、rest 要素を数える部分がこちらです (クロージャの外側と、このあとに続く省略可能な要素の並び順の検査は省き、インデントを詰めて載せます)。
 
 ```rust
 let tuple = me.parse_tuple_element();
@@ -340,7 +340,7 @@ Positive は正しいコードをエラーなく通せたか、Negative はエ�
 //     - We have to ignore by file path, then manually add some parts separately to `misc` cases
 ```
 
-同じエラーコードでも tsc の別々の部品から出ることがあり、パースの時点で分かる場合も、型推論の結果で初めて分かる場合もある。だからエラーコードだけでは除外できず、ファイル単位で除外している、という内容です。TS1265 はまさにその例で、`...string[]` ならパースの時点で分かり、`...S` なら型を解決して初めて分かります。
+同じエラーコードでも tsc の別々の部品から出ることがあり、パースの時点で分かる場合も、型推論の結果で初めて分かる場合もある。だからエラーコードだけでは除外できず、ファイル単位で除外している、という内容です。TS1265 はこの状況に当てはまり、`...string[]` ならパースの時点で分かり、`...S` なら型を解決して初めて分かります。
 
 ## 実例3: `keyof infer U` は、oxc ではセマンティック解析が出す
 
@@ -450,7 +450,7 @@ fn leave_node(&mut self, kind: AstKind<'a>) {
 }
 ```
 
-スコープとシンボルの表を作るために、どうせ木を1周するので、そのついでに検査しているわけです。
+スコープとシンボルの表を作る木の巡回のなかで、ノードを抜けるたびに検査を呼んでいます。
 
 ### この検査は、頼まないと走らない
 
@@ -473,11 +473,11 @@ pub fn with_check_syntax_error(mut self, yes: bool) -> Self {
 
 これを有効にしないと、パースした結果が ECMAScript の仕様に従っている保証は無い、と書いてあります。既定値はオフです。セマンティック解析のサンプルが使っている `SemanticBuilder::new_compiler()` は、これをオンにする設定でした。
 
-つまり oxc では、`oxc_parser` が通したことは「文法として正しい」ことを意味しません。今回の TS1338 は、パーサーとセマンティック解析の両方を、検査をオンにして通したときに初めて出ます。
+つまり oxc では、`oxc_parser` が通しただけでは、TS1338 のような検査は済んでいません。このエラーは、パーサーに続けてセマンティック解析を、検査をオンにして通したときに初めて出ます。
 
 ## まとめ
 
-- 同じ TS1265 が、tsc ではチェッカーから、oxc ではパーサーから出ていた。「配列かどうか」を書かれた見た目で近似し、型を解決しないぶん手前の段で出している
+- 同じ TS1265 が、tsc ではチェッカーから、oxc ではパーサーから出ていた。「配列かどうか」を書かれた見た目で近似し、型を解決せず、パーサーの段で出している
 - 見た目で近似するので、`type S = string[]` のようなエイリアスを挟むと oxc はどの段でも出さない。型を解決しないと分からないエラーは、手の届く範囲の外にある
 - TS1338 (`infer` の位置) は、tsc ではチェッカー、oxc ではセマンティック解析が、どちらも祖先をさかのぼる同じ形の検査で出していた。型の要らない検査なので、型チェッカーを持たなくても同じことができる
 - エラーの番号は tsc と oxc で共通だが、番号を見ても、どの段が出したかは分からない

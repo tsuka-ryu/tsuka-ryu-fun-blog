@@ -1,7 +1,7 @@
 ---
 title: oxcのTypeScriptパーサーを読む 第7回 tscの移植の、引き算と足し算
 description: oxc の TypeScript パーサーは tsc のパーサーを写したものです。写すときに持ってこなかったものと、写した上に足した近道を、ソースに残ったコメントから拾います。
-date: 2026-10-06
+date: 2026-11-06
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
 draft: true
 ---
@@ -153,7 +153,7 @@ function parseUnionOrIntersectionType(operator, parseConstituentType, createType
 
 oxc のコメントの中身は、`parseUnionOrIntersectionType` の `let type = ...` と `types.push(...)` の、`||` より左の部分そのものです。移植では `||` の右側 (`parseConstituentType()`) だけを写し、左側を原文のままコメントにして、元の位置に置いています。
 
-左側の `parseFunctionOrConstructorTypeToError` は、エラーメッセージのための関数です。union や intersection の構成要素が関数型やコンストラクタ型の形で始まっていたら、ひとまずそれを読み切ってから、「union の中で関数型を書くなら括弧で囲め」というエラーを付けます。関数型の `=>` は `|` より弱く結合するので、`string | () => void` は括弧が無いと正しい型になりません。
+左側の `parseFunctionOrConstructorTypeToError` は、エラーメッセージのための関数です。union や intersection の構成要素が関数型やコンストラクタ型の形で始まっていたら、ひとまずそれを読み切ってから、「union の中で関数型を書くなら括弧で囲め」というエラーを付けます。
 
 ### 捨てたのはエラーメッセージの質
 
@@ -195,9 +195,9 @@ statements: 1
 
 このコメントが入ったのは、2024年6月の [#3903](https://github.com/oxc-project/oxc/pull/3903) (refactor(parser): improve parsing of TypeScript types) でした。`ts/types.rs` を大きく書き直した PR ですが、本文は `- [x] fix everything` の1行だけで、この2行を写さなかった理由は書かれていません (ここも Claude に確認してもらいました)。
 
-なので以下は自分の推測です。Claude に tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、構成要素が `(` で始まるときに `lookAhead` で先を覗いていました。この書き方のままだと、`string | (() => void)` のような正しい型でも、`(` で始まる構成要素ごとに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。
+なので以下は自分の推測です。Claude に tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、`(` で始まるときに `lookAhead` で先を覗いていました。`parseFunctionOrConstructorTypeToError` は `|` のあとの構成要素ごとに呼ばれるので、この書き方のままだと、`string | (() => void)` のような正しい型でも、`|` のあとが `(` で始まるたびに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。
 
-コメントで残してあることにも意味があると思います。知らずに落としたのではなく、ここに tsc の処理があることを知ったうえで写さなかった、という印になっています。
+コメントで残してあるので、ここに tsc の処理があったことは、oxc のソースだけを読んでも分かります。
 
 ### JSDoc の型は TODO のまま
 
@@ -226,7 +226,7 @@ JSDoc は、JavaScript のファイルにコメントで型を書くための記
 
 コメントになっているのは2つです。`*` は「何でもよい型」(`JSDocAllType`)、`function(string): void` は Closure Compiler 由来の関数型の書き方 (`JSDocFunctionType`) です。すぐ下の `?` と `!` の腕は JSDoc の型を読む関数を呼んでいて、こちらは移植されています。union のときとは違って、先頭に `TODO` と書いてあるので、捨てたというより後回しにした、という扱いです。
 
-ここで面白かったのが ts-go です。Claude に `parseNonArrayType` (`tsc/internal/parser/parser.go:2804`) を見てもらうと、`*` を読む腕はあるのに、`function` を読む腕がありませんでした。ts-go のリポジトリには、JS 版から意図的に変えたことを並べた [CHANGES.md](https://github.com/microsoft/TypeScript/blob/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc/CHANGES.md#L113-L117) があり、そこにはっきり書いてありました。
+ts-go も見てみます。Claude に `parseNonArrayType` (`tsc/internal/parser/parser.go:2804`) を見てもらうと、`*` を読む腕はあるのに、`function` を読む腕がありませんでした。ts-go のリポジトリには、JS 版から意図的に変えたことを並べた [CHANGES.md](https://github.com/microsoft/TypeScript/blob/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc/CHANGES.md#L113-L117) があり、そこにはっきり書いてありました。
 
 > JSDoc types are parsed in normal type annotation position but show a grammar error. Corsa no longer parses the JSDoc types below, giving a parse error instead of a grammar error.
 >
@@ -436,7 +436,7 @@ fn parse_call_expression_rest(
 
 ### 同じ近道が ts-go に足されることもある
 
-近道は oxc だけのものとも限りません。式の中の `<` を型引数として投機パースする関数には、現在のトークンが `<` でなければ checkpoint を取る前に帰る門番があります。この門番は、ts-go の [#4234](https://github.com/microsoft/typescript-go/pull/4234) と oxc の [#23069](https://github.com/oxc-project/oxc/pull/23069) で、2026年6月に1日違いで作られた PR によって両方へ足されていました (Claude に確認してもらいました)。oxc が足したのと同じ近道が、tsc の側 (ts-go) に足されることもあるわけです。一方、この記事で見た2つの近道は、Go 版の main にも見つけられませんでした。
+近道は oxc だけのものとも限りません。式の中の `<` を型引数として投機パースする関数 (`parse_type_arguments_in_expression`、ts-go 側は `tryParseTypeArgumentsInExpression`) には、現在のトークンが `<` でなければ checkpoint を取る前に帰る門番があります。この門番は、ts-go の [#4234](https://github.com/microsoft/typescript-go/pull/4234) と oxc の [#23069](https://github.com/oxc-project/oxc/pull/23069) で、2026年6月に1日違いで作られた PR によって両方へ足されていました (Claude に確認してもらいました)。oxc が足したのと同じ近道が、tsc の側 (ts-go) に足されることもあるわけです。一方、この記事で見た2つの近道は、Go 版の main にも見つけられませんでした。
 
 ## 引き算も足し算も、tsc との関係を書き残している
 
