@@ -22,6 +22,8 @@ crates/oxc_parser/src/lexer/mod.rs         650行   1トークンだけ覗く pe
 
 比べる相手の tsc は、npm で配られている 6.0.3 の `lib/typescript.js` と、Go 版の tsc (以下 ts-go) のソースです。こちらは今は microsoft/TypeScript リポジトリの `tsc/` の下にあり、行番号は rev `f29aeb9f` のものです。この2つの中身と、PR の経緯は Claude に確認してもらったものです。
 
+この rev の後で oxc は変わっていて、引き算の最初の例 (union の中の関数型) でコメントアウトされていた tsc の原文は、最新の main (2026-11-04 の `98b65d8353`) では消えています。該当する箇所で触れます。そちらで流した結果と、変更の経緯 (コミットメッセージ) も、Claude に確認してもらいました。そのほかの例は、最新の main でも主張は変わりませんでした。
+
 ## 下準備: oxc のエラーを手元で出す
 
 この記事に出てくる oxc の出力は1つだけで、次の手順で手元でも同じものが出せます。Rust のツールチェーンが入っていれば動きます。
@@ -82,7 +84,7 @@ pub fn peek_token(&mut self) -> Token {
 
 ### コメントアウトされた tsc の原文
 
-union 型 (`A | B`) と intersection 型 (`A & B`) を組み立てる `parse_union_type_or_intersection_type` (`ts/types.rs:252`) です。
+rev の、union 型 (`A | B`) と intersection 型 (`A & B`) を組み立てる `parse_union_type_or_intersection_type` (`ts/types.rs:252`) です。
 
 ```rust
 fn parse_union_type_or_intersection_type<F>(
@@ -195,9 +197,11 @@ statements: 1
 
 このコメントが入ったのは、2024年6月の [#3903](https://github.com/oxc-project/oxc/pull/3903) (refactor(parser): improve parsing of TypeScript types) でした。`ts/types.rs` を大きく書き直した PR ですが、本文は `- [x] fix everything` の1行だけで、この2行を写さなかった理由は書かれていません (ここも Claude に確認してもらいました)。
 
-なので以下は自分の推測です。Claude に tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、`(` で始まるときに `lookAhead` で先を覗いていました。`parseFunctionOrConstructorTypeToError` は `|` のあとの構成要素ごとに呼ばれるので、この書き方のままだと、`string | (() => void)` のような正しい型でも、`|` のあとが `(` で始まるたびに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。
+なので以下は自分の推測です。Claude に tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、`(` で始まるときに `lookAhead` で先を覗いていました。`parseFunctionOrConstructorTypeToError` は `|` のあとの構成要素ごとに呼ばれるので、この書き方のままだと、`string | (() => void)` のような正しい型でも、`|` のあとが `(` で始まるたびに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。なお、`|` のあとの `(` で始まる判定にあたる oxc の `is_start_of_function_type_or_constructor_type` は、rev の後の2026年10月30日の [#28489](https://github.com/oxc-project/oxc/pull/28489) (perf(parser): use token lookahead for simple function types) で、`(` のあとが単純な引数名なら checkpoint を取らずにトークンを数個見るだけで決める形になりました。
 
-コメントで残してあるので、ここに tsc の処理があったことは、oxc のソースだけを読んでも分かります。
+rev では、コメントで残してあるので、ここに tsc の処理があったことは、oxc のソースだけを読んでも分かります。
+
+ただしこのコメントは、rev の後の2026年10月18日に、[#27910](https://github.com/oxc-project/oxc/pull/27910) (refactor(parser): simplify `parse_union_type_or_intersection_type`) で消えました。コミットメッセージはタイトルだけで、消した理由は書かれていません。最新の main の同じ関数は、`||` の右側にあたる `parse_constituent_type(self)` だけを呼ぶ形で、`|` のあとを読む部分は `parse_union_type_or_intersection_type_rest` に切り出されています。今は、oxc のソースだけを読んでも、ここに tsc の処理があったことは分かりません。下準備の入力を最新の main で流すと、出力は rev と同じ `Unexpected token` でした。
 
 ### JSDoc の型は TODO のまま
 
@@ -328,7 +332,7 @@ func (p *Parser) isStartOfDeclaration() bool {
 }
 ```
 
-oxc の worker は、この `lookAhead` に渡される関数の移植にあたります。高速経路にあたるものは、tsc にも ts-go にも見つけられませんでした (Go 版のほうは、2026年10月3日時点の microsoft/TypeScript の main でも同じでした)。
+oxc の worker は、この `lookAhead` に渡される関数の移植にあたります。高速経路にあたるものは、tsc にも ts-go にも見つけられませんでした (Go 版のほうは、2026年11月4日時点の microsoft/TypeScript の main でも同じでした)。
 
 高速経路は [#23083](https://github.com/oxc-project/oxc/pull/23083) (perf(parser): fast-path single-keyword TS declarations、2026年6月) で入りました。PR の本文によると、`interface` や `type`、`enum`、`namespace` のよくある宣言を checkpoint なしで済ませるためで、テストのスナップショットがバイト単位で変わらないことに加えて、`module.exports` や `type = 5`、`interface()`、キーワードの直後の改行のような、判定を間違えると結果が変わる入力を集めたファイルで、出力が変わらないことを確かめています。
 
@@ -369,7 +373,7 @@ fn parse_lhs_expression_or_higher_impl(&mut self) -> Expression<'a> {
     };
 ```
 
-引用は `_impl` の途中までで、後半 (`?.` があったときに全体を包む処理) は省きました。
+引用は `_impl` の途中までで、後半 (`?.` があったときに全体を包む処理) は省きました。最新の main では、この `_impl` の中身のうち `primary` を読んだ後が `parse_lhs_expression_rest` に切り出されていますが、`if matches!(self.cur_kind(), Kind::LParen | Kind::QuestionDot)` の近道は同じコメントのまま残っています。
 
 最初の識別子や数値を `parse_primary_expression` で読み、`.b` や `[0]` のような後ろに続くものを `parse_member_expression_rest` で積みます。そのあとの `if` が近道です。コメントを訳すと、「完全にパースし終わった `MemberExpression` が `LeftHandSideExpression` に伸びるのは、`Arguments` (`(`) か `OptionalChain` (`?.`) を経由するときだけ。だから、それ以外のときは `parse_call_expression_rest` (と、その中の重複したメンバー式の再走査) を飛ばす」。
 
@@ -438,18 +442,28 @@ fn parse_call_expression_rest(
 
 近道は oxc だけのものとも限りません。式の中の `<` を型引数として投機パースする関数 (`parse_type_arguments_in_expression`、ts-go 側は `tryParseTypeArgumentsInExpression`) には、現在のトークンが `<` でなければ checkpoint を取る前に帰る門番があります。この門番は、ts-go の [#4234](https://github.com/microsoft/typescript-go/pull/4234) と oxc の [#23069](https://github.com/oxc-project/oxc/pull/23069) で、2026年6月に1日違いで作られた PR によって両方へ足されていました (Claude に確認してもらいました)。oxc が足したのと同じ近道が、tsc の側 (ts-go) に足されることもあるわけです。一方、この記事で見た2つの近道は、Go 版の main にも見つけられませんでした。
 
-## 引き算も足し算も、tsc との関係を書き残している
+## rev では、引き算も足し算も tsc との関係を書き残している
 
 引き算と足し算を並べてみると、残し方が似ています。
 
-引き算のほうは、写さなかった tsc の処理を、原文のままコメントにして元の位置に置いていました。足し算のほうは、近道の横に「worker の腕とそのまま一致している」「呼び出し元は `(` か `?.` のときにしか入らない」と、何と同じ答えを出すべきかを書いていました。
+引き算のほうは、rev では、写さなかった tsc の処理を、原文のままコメントにして元の位置に置いていました (union の例のコメントは、最新の main では消えています)。足し算のほうは、近道の横に「worker の腕とそのまま一致している」「呼び出し元は `(` か `?.` のときにしか入らない」と、何と同じ答えを出すべきかを書いていました。
 
 どちらも、tsc を写した部分との関係を、ソースの中に書き残しています。元のコードと並べて読むときは、このコメントが目印になります。
+
+## rev より後の oxc の変更
+
+この記事は rev `1aa5ec11ce` (2026-09-13) の oxc を読んでいます。その後、最新の main (2026-11-04 の `98b65d8353`) までに入った変更のうち、記事の内容に関わるものを一覧にします。本文では rev の挙動を読み、変わった箇所でそのつど触れています。一覧は Claude に確認してもらいました。
+
+| 変更 | PR | 日付 | 本文の箇所 |
+| ---- | -- | ---- | ---------- |
+| `parse_union_type_or_intersection_type` を整理し、コメントアウトされた tsc の原文が消えた | [oxc#27910](https://github.com/oxc-project/oxc/pull/27910) | 2026-10-18 | 引き算の最初の例、結びの節、まとめ |
+| `is_start_of_function_type_or_constructor_type` が、`(` のあとが単純な引数名なら checkpoint なしで決める形になった | [oxc#28489](https://github.com/oxc-project/oxc/pull/28489) | 2026-10-30 | 「理由は PR に書かれていない」の節 |
+| `parse_lhs_expression_or_higher_impl` の、`primary` を読んだ後が `parse_lhs_expression_rest` に切り出された | [oxc#28306](https://github.com/oxc-project/oxc/pull/28306) | 2026-10-29 | 左辺式の近道の節 |
 
 ## まとめ
 
 - oxc の TypeScript パーサーは、関数の分け方も判定の順番も tsc を写している。だから違うところは、移植した人が選んだ跡として読める
-- 引き算: union の中の関数型に名指しのエラーを出す tsc の処理は、原文のままコメントにして写していない。失ったのはエラーメッセージの質で、理由は PR に書かれていない
+- 引き算: union の中の関数型に名指しのエラーを出す tsc の処理は、rev では原文のままコメントにして写していない (このコメントは最新の main では消えた)。失ったのはエラーメッセージの質で、理由は PR に書かれていない
 - 引き算: JSDoc の `*` と `function(...)` は TODO のまま。ts-go も `function(...)` と単独の `?` は意図的に捨てていて、捨てたものの組み合わせは oxc と同じではない
 - 足し算: TS の宣言の入口の高速経路と、左辺式で呼び出しが続かないときの近道は、tsc にも ts-go にも見つけられなかった。どちらも、tsc を写した遅い経路と同じ答えを出すことを、コメントと `debug_assert!` と出力の一致で保っている
 
