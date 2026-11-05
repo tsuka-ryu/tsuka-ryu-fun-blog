@@ -3,7 +3,6 @@ title: oxcのTypeScriptパーサーを読む 第7回 tscの移植の、引き算
 description: oxc の TypeScript パーサーは tsc のパーサーを写したものです。写すときに持ってこなかったものと、写した上に足した近道を、ソースに残ったコメントから拾います。
 date: 2026-11-06
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
-draft: true
 ---
 
 この記事では、oxc の TypeScript パーサーを tsc のパーサーの移植として読み、移植のときに持ってこなかったもの (引き算) と、移植の上に足した近道 (足し算) を、ソースに残った跡から拾います。
@@ -197,7 +196,7 @@ statements: 1
 
 このコメントが入ったのは、2024年6月の [#3903](https://github.com/oxc-project/oxc/pull/3903) (refactor(parser): improve parsing of TypeScript types) でした。`ts/types.rs` を大きく書き直した PR ですが、本文は `- [x] fix everything` の1行だけで、この2行を写さなかった理由は書かれていません (ここも Claude に確認してもらいました)。
 
-なので以下は自分の推測です。Claude に tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、`(` で始まるときに `lookAhead` で先を覗いていました。`parseFunctionOrConstructorTypeToError` は `|` のあとの構成要素ごとに呼ばれるので、この書き方のままだと、`string | (() => void)` のような正しい型でも、`|` のあとが `(` で始まるたびに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。なお、`|` のあとの `(` で始まる判定にあたる oxc の `is_start_of_function_type_or_constructor_type` は、rev の後の2026年10月30日の [#28489](https://github.com/oxc-project/oxc/pull/28489) (perf(parser): use token lookahead for simple function types) で、`(` のあとが単純な引数名なら checkpoint を取らずにトークンを数個見るだけで決める形になりました。
+なので以下は Claude の推測です。tsc 側をもう少し見てもらうと、`parseFunctionOrConstructorTypeToError` が最初に呼ぶ `isStartOfFunctionTypeOrConstructorType` は、`(` で始まるときに `lookAhead` で先を覗いていました。`parseFunctionOrConstructorTypeToError` は `|` のあとの構成要素ごとに呼ばれるので、この書き方のままだと、`string | (() => void)` のような正しい型でも、`|` のあとが `(` で始まるたびに先読みが1回増えます。正しいコードの速さに払うコストと、間違ったコードに出すメッセージの質を比べて、後者を捨てた、と読むのが自然に見えます。なお、`|` のあとの `(` で始まる判定にあたる oxc の `is_start_of_function_type_or_constructor_type` は、rev の後の2026年10月30日の [#28489](https://github.com/oxc-project/oxc/pull/28489) (perf(parser): use token lookahead for simple function types) で、`(` のあとが単純な引数名なら checkpoint を取らずにトークンを数個見るだけで決める形になりました。
 
 rev では、コメントで残してあるので、ここに tsc の処理があったことは、oxc のソースだけを読んでも分かります。
 
