@@ -65,7 +65,7 @@ done
 
 tsc では、この3段にそれぞれパーサー (parser)、バインダー (binder)、チェッカー (checker) という名前が付いています。たとえば同じブロックで `let x` を2回宣言したときのエラー (TS2451) は、バインダーが出します (Claude に確認してもらいました)。
 
-oxc では、パーサーが `oxc_parser`、セマンティック解析が `oxc_semantic` という別々のクレートです。型チェッカーにあたる段は持っていません。`oxc_type_checker` というクレートはありますが、[冒頭のドキュメントコメント](https://github.com/oxc-project/oxc/blob/1aa5ec11ce0dcbb0da7799e777c2492211908fbb/crates/oxc_type_checker/src/lib.rs#L1-L6)に「It does *not* type check anything yet.」とあって、今はまだ足場だけです (Claude に確認してもらいました)。このクレートは、2026年9月22日に [oxc#26915](https://github.com/oxc-project/oxc/pull/26915) で削除され、最新の main にはありません。
+oxc では、パーサーが `oxc_parser`、セマンティック解析が `oxc_semantic` という別々のクレートです。型チェッカーにあたる段は持っていません。`oxc_type_checker` というクレートはありますが、[冒頭のドキュメントコメント](https://github.com/oxc-project/oxc/blob/1aa5ec11ce0dcbb0da7799e777c2492211908fbb/crates/oxc_type_checker/src/lib.rs#L1-L6)に「It does _not_ type check anything yet.」とあって、今はまだ足場だけです (Claude に確認してもらいました)。このクレートは、2026年9月22日に [oxc#26915](https://github.com/oxc-project/oxc/pull/26915) で削除され、最新の main にはありません。
 
 もう1つ、TS1265 のような番号について。これはエラーメッセージ1つ1つに振られている番号で、tsc の [`diagnosticMessages.json`](https://github.com/microsoft/TypeScript/blob/f29aeb9f825d96feea27841f3f7342dbf0df68a8/tsc/internal/diagnostics/diagnosticMessages.json#L858-L861) に、メッセージの文と組で定義されています (Go 版の tsc のもの)。
 

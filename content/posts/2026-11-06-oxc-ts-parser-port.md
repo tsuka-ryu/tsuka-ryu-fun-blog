@@ -454,11 +454,11 @@ fn parse_call_expression_rest(
 
 この記事は rev `1aa5ec11ce` (2026-09-13) の oxc を読んでいます。その後、最新の main (2026-11-04 の `98b65d8353`) までに入った変更のうち、記事の内容に関わるものを一覧にします。本文では rev の挙動を読み、変わった箇所でそのつど触れています。一覧は Claude に確認してもらいました。
 
-| 変更 | PR | 日付 | 本文の箇所 |
-| ---- | -- | ---- | ---------- |
-| `parse_union_type_or_intersection_type` を整理し、コメントアウトされた tsc の原文が消えた | [oxc#27910](https://github.com/oxc-project/oxc/pull/27910) | 2026-10-18 | 引き算の最初の例、結びの節、まとめ |
+| 変更                                                                                                               | PR                                                         | 日付       | 本文の箇所                         |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------- | ---------------------------------- |
+| `parse_union_type_or_intersection_type` を整理し、コメントアウトされた tsc の原文が消えた                          | [oxc#27910](https://github.com/oxc-project/oxc/pull/27910) | 2026-10-18 | 引き算の最初の例、結びの節、まとめ |
 | `is_start_of_function_type_or_constructor_type` が、`(` のあとが単純な引数名なら checkpoint なしで決める形になった | [oxc#28489](https://github.com/oxc-project/oxc/pull/28489) | 2026-10-30 | 「理由は PR に書かれていない」の節 |
-| `parse_lhs_expression_or_higher_impl` の、`primary` を読んだ後が `parse_lhs_expression_rest` に切り出された | [oxc#28306](https://github.com/oxc-project/oxc/pull/28306) | 2026-10-29 | 左辺式の近道の節 |
+| `parse_lhs_expression_or_higher_impl` の、`primary` を読んだ後が `parse_lhs_expression_rest` に切り出された        | [oxc#28306](https://github.com/oxc-project/oxc/pull/28306) | 2026-10-29 | 左辺式の近道の節                   |
 
 ## まとめ
 
