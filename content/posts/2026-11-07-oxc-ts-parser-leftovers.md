@@ -766,18 +766,6 @@ rev の後の2026年10月30日に、取っておくものが変わりました (
 
 なお、アロー関数を投機パースで扱うのは oxc の独自の判断ではありません。Claude に確認してもらったところ、tsc 6.0.3 の `isParenthesizedArrowFunctionExpressionWorker` にも、上の `match third` と同じ分岐が並んでいました (3つ目の値の名前は、oxc の `Maybe` に対して tsc は `Unknown`)。配布されている JavaScript にはコメントが残っていないので、コメントは Go 版 (`tsc/internal/parser/parser.go:4322` から) で突き合わせてもらい、oxc の上のコメントと同じ文面でした。
 
-## rev より後の oxc の変更
-
-この記事は rev `1aa5ec11ce` (2026-09-13) の oxc を読んでいます。その後、最新の main (2026-11-04 の `98b65d8353`) までに入った変更のうち、記事の内容に関わるものを一覧にします。本文では rev の挙動を読み、変わった箇所でそのつど触れています。一覧は Claude に確認してもらいました。
-
-| 変更                                                                                                    | PR                                                                                                                     | 日付              | 本文の箇所              |
-| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------------------- |
-| tuple の rest の検査 (エラー番号 1265 と 1266) を削除                                                   | [oxc#27234](https://github.com/oxc-project/oxc/pull/27234)                                                             | 2026-09-30        | tuple type の節、まとめ |
-| mapped type の判定が、`{` を先に食べてから先読みする形になった。判定の中身は同じ                        | [oxc#28430](https://github.com/oxc-project/oxc/pull/28430)                                                             | 2026-10-29        | mapped type の節        |
-| `parse_type_or_type_predicate` が、普通の識別子を `peek_token` で覗かず先に食べる形になった。出力は同じ | [oxc#28416](https://github.com/oxc-project/oxc/pull/28416)                                                             | 2026-10-29        | 型述語の節、まとめ      |
-| アロー関数の `(識別子)` が、先読みで決まるようになった                                                  | [oxc#28412](https://github.com/oxc-project/oxc/pull/28412)、[oxc#28491](https://github.com/oxc-project/oxc/pull/28491) | 2026-10-29〜10-30 | アロー関数の節          |
-| `cover_initialized_name` に取っておくものが、`CoverInitializedName` に変わった。エラー出力は同じ        | [oxc#28495](https://github.com/oxc-project/oxc/pull/28495)                                                             | 2026-10-30        | アロー関数の節の末尾    |
-
 ## まとめ
 
 - mapped type とインデックスシグネチャは、`{` `[` 識別子 の次のトークンで分かれる。何トークン見れば決まるかが固定なので、投機ではなく `lookahead` で済む
