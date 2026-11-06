@@ -40,6 +40,9 @@ FUNSTACK Static で作る静的技術ブログ。
 - 型チェックは `tsrs`（Rust 製の TypeScript 移植版）。`pnpm typecheck`（= `tsrs --noEmit`）。
   エディタの言語サーバも tsrs（`.vscode/settings.json` の `js/ts.tsdk.path` が `node_modules/tsrs/tsdk` を指す。
   VS Code 拡張「TypeScript (Native Preview)」が必要）。`@typescript/native-preview` は外した。
+- 型情報を使う lint（`oxlint --type-aware`）のバックエンドも tsrs 同梱の `tsrs-lint`
+  （`OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint`、`pnpm run lint` に設定済み）。`oxlint-tsgolint` は外した。
+  環境変数をスクリプトに直書きしているので POSIX シェル前提（Windows では動かない）。
   tsrs で誤検知や非互換を見つけたら issue を立てる（自分でパッチしてもよい）。
 
 ## ディレクトリ構成

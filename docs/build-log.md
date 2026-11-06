@@ -1390,3 +1390,15 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
 - **注意**: tsrs の README によると、tsrs リポジトリは issue のみ受け付け、Pull Request は閉じている。
   「自分でパッチする」はフォークで持つ形になる。
 - 設定は Windows では別パッケージ（`@tsrs/win32-x64`）が要る。macOS / Linux のみ想定で、必要になったら足す。
+
+### 2026-11-06 — 型情報を使う lint のバックエンドも tsrs-lint にし、oxlint-tsgolint を外す
+
+- **採用**: `lint` / `lint:fix` に `OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint` を付け、`oxlint --type-aware`
+  の型情報の提供元を `oxlint-tsgolint` から tsrs 同梱の `tsrs-lint` に変えた。`oxlint-tsgolint` は devDependency から削除。
+  - 確認: `no-floating-promises` と `await-thenable` に違反するコードで、両者が同じ診断（位置・メッセージ）を出した。
+    違反のない現状のコードは exit 0（`lint` / `lint:fix` とも）。
+- **ハマりどころ**: パスは `tsrs` ではなく `tsrs-lint`（ランチャー）を指す。oxlint は `<path> headless ...` で呼ぶため、
+  `tsrs` を指すと `headless` がルートファイルとして読まれる（tsrs のドキュメントの注意書き）。
+- **却下した代替案**: `oxlint --type-aware --type-check` で lint と型チェックを一本化する案。tsrs のドキュメント上は
+  置き換えられるが、対象の tsconfig やコンパイラオプションが揃うときに限る。まず `typecheck` を別に残して挙動を見る。
+- **注意**: 環境変数をスクリプトに直書きしたので、Windows では動かない。必要になったら `cross-env` などを足す。
