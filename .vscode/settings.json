@@ -1,7 +1,9 @@
 {
-  // TypeScript ネイティブ版（tsgo / @typescript/native-preview）をエディタの言語サーバに使う。
-  // 要: VS Code 拡張「TypeScript (Native Preview)」のインストール。
-  "typescript.experimental.useTsgo": true,
+  // 言語サーバに tsrs（Rust 製の TypeScript 移植版）を使う。tsrs は tsgo と同じ LSP を話すので、
+  // 拡張「TypeScript (Native Preview)」の tsdk に node_modules/tsrs/tsdk を指す。
+  // 要: 拡張のインストールと、初回のワークスペース信頼・SDK 実行の許可。
+  "js/ts.experimental.useTsgo": true,
+  "js/ts.tsdk.path": "./node_modules/tsrs/tsdk",
 
   // Code Spell Checker（cSpell）にプロジェクト固有語を登録してノイズを抑制。
   "cSpell.words": [
@@ -16,7 +18,7 @@
     "takumi",
     "tsbuildinfo",
     "tsconfig",
-    "tsgo",
+    "tsrs",
     "tsuka",
     "uhyo"
   ]

@@ -38,7 +38,8 @@ FUNSTACK Static で作る静的技術ブログ。
   **Node 22 以下ではフックが落ちる。** Node 24 を `PATH` の先頭に付けて push する（フックは飛ばさない）。
 - PR のマージはスカッシュのみ（リベースマージは許可されていない）。
 - 型チェックは `tsrs`（Rust 製の TypeScript 移植版）。`pnpm typecheck`（= `tsrs --noEmit`）。
-  エディタの言語サーバと lint の型情報は、引き続きネイティブ版 `@typescript/native-preview`（`tsgo`）を使う。
+  エディタの言語サーバも tsrs（`.vscode/settings.json` の `js/ts.tsdk.path` が `node_modules/tsrs/tsdk` を指す。
+  VS Code 拡張「TypeScript (Native Preview)」が必要）。`@typescript/native-preview` は外した。
   tsrs で誤検知や非互換を見つけたら issue を立てる（自分でパッチしてもよい）。
 
 ## ディレクトリ構成

@@ -1375,3 +1375,18 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
   provenance は `oxc-project/tsrs` のものと確認し、`trustPolicyExclude` に**採用バージョンだけ**を書いて通した。
   バージョンを上げるときは、この除外も書き換える。
 - **同時に `minimumReleaseAge` を 7 日から 3 日に短縮**。別リポジトリ（tsuka-ryu-s-blog）とは値がずれる。
+
+### 2026-11-06 — エディタの言語サーバも tsrs にし、native-preview を外す
+
+- **採用**: `.vscode/settings.json` で `js/ts.tsdk.path` を `./node_modules/tsrs/tsdk` に向け、`js/ts.experimental.useTsgo`
+  を使う。tsrs は `tsgo --lsp --stdio` と同じ LSP を話し、パッケージが `tsdk/tsgo`（実体は tsrs への委譲）を持つため、
+  VS Code 拡張「TypeScript (Native Preview)」がそのまま起動できる。lockfile のバージョンにエディタも揃う。
+  キー名は旧 `typescript.experimental.useTsgo` から `js/ts.experimental.useTsgo` に変えた（tsrs のドキュメントに従う）。
+- **`@typescript/native-preview` を devDependency から削除**: 使っていたのは CLI の `typecheck` とエディタ設定だけで、
+  どちらも tsrs に移った。`oxlint --type-aware` は別パッケージ（`oxlint-tsgolint`）が型情報を持つので影響しない
+  （`pnpm run lint` で確認）。
+- **未確認**: VS Code 上での実動作（この環境にエディタがないため）。初回はワークスペース信頼と SDK 実行の許可を求められる。
+  動かない場合は「TypeScript 7: Restart Server」か、出力チャンネルで起動した実行ファイルを確認する。
+- **注意**: tsrs の README によると、tsrs リポジトリは issue のみ受け付け、Pull Request は閉じている。
+  「自分でパッチする」はフォークで持つ形になる。
+- 設定は Windows では別パッケージ（`@tsrs/win32-x64`）が要る。macOS / Linux のみ想定で、必要になったら足す。
