@@ -12,3 +12,8 @@ trustPolicy: no-downgrade
 # 上記ゲートは新規解決にだけ効かせ、確定済み lockfile の再検証では適用しない。
 # 単一著者リポジトリで全コミットが信頼でき、pin 済みの新しい dev 依存が再検証で落ちるのを防ぐため。
 trustLockfile: true
+# tsrs は公開方式が staged publish から trusted publisher（provenance 付き）に変わったため、
+# no-downgrade が誤検知する。provenance は oxc-project/tsrs のものと確認済み。
+# 範囲を絞るため、パッケージ全体ではなく採用バージョンだけを除外する。
+trustPolicyExclude:
+  - tsrs@0.21.0-ts7.1.0-beta

@@ -116,9 +116,9 @@ src/
   `"imports": { "#*": "./src/*" }` を使う。例 `#markdown/types.js` /
   `#lib/toc.js` / `#app/App.js`。拡張子は `.js` 規約（`moduleResolution: bundler`）。
 - **コメントは日本語**。各ファイルの主要な関数/エクスポートの直上に役割コメントを置く。
-- **TypeScript はネイティブ版 tsgo に一本化**（`pnpm typecheck` = `tsgo --noEmit`）。
+- **型チェックは tsrs**（`pnpm typecheck` = `tsrs --noEmit`）。エディタは tsgo（native-preview）。
 - **依存の末端から作る**。未作成モジュール依存はスタブを作らず**コメントアウト**で
-  逃がし、各コミットを tsgo green に保つ。
+  逃がし、各コミットを型チェック green に保つ。
 
 ## Markdown レンダリングの仕組み（フェーズ3）
 

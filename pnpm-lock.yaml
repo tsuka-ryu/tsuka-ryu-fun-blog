@@ -274,6 +274,9 @@ importers:
       takumi-js:
         specifier: ^1.8.3
         version: 1.8.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      tsrs:
+        specifier: 0.21.0-ts7.1.0-beta
+        version: 0.21.0-ts7.1.0-beta
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@24.13.2)(jiti@2.7.0)(yaml@2.9.0)
@@ -856,6 +859,52 @@ packages:
   '@takumi-rs/wasm@1.8.3':
     resolution: {integrity: sha512-Z4X88alANpbHlAl+IeBH0cv2DeJ6PtOviCV/eZjrcwen5cVi297xgbH4ATd9YDuGGNf6QmVcJJv9QzR6QnJgBg==}
 
+  '@tsrs/darwin-arm64@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-qBHxa+LmrNu/XYZjqLXV4qQPsHzxSI+dQTISxXuxyBaxtJVDwCwGAq9rVHKgaUX3U0bsyb8FyC1JIZFu4+EqZQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tsrs/darwin-x64@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-7WUGrCYqz94dRpSTungOh90LL/5NhhnLQrMQqRYvmirHcp1sRlcVziJ2w+cynKwQ81/I2UajsNiKho/YSObcyA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tsrs/linux-arm64-gnu@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-bNWkz4lu+bOzl+sl9btE4pQ0RbLkv0Zm4FE2oKvBrt56vCnl7khcAcsqpSxBXApOkp5OwvyyY+XuOGuROBt7yg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tsrs/linux-arm64-musl@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-TwvKTiOD8Fwb3HB+CrhnpYgKf7He1BobtjefTja0iGAzDtfaiGwoF06zLUdmey27kmCmxjBPybS45VRyZBkQnQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tsrs/linux-x64-gnu@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-0OAYWOp33xHJbY/zwowbq4IKg1aCzD98sb2ksZb/1um2l28HYhJyhMEEsNczLpUFipQDE+zVBNkFoBML/KRNvA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tsrs/linux-x64-musl@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-OtYmWa1tzjSt/bXxotPBrPrzlfZqz+azkkfotmuYMQfxiOgmRRm7cl022iV4lE21EOUicqp0NAnuDGDLfDlNBg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tsrs/win32-x64@0.21.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-ITwz3wOx161DNwEC4qYrrRwWgQyZQR4Os/GA3g67dKml0CQ4LPWHXniCzXrMagwYyH2vBBhPYT+7o+bKDj0qtA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
+
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
 
@@ -1424,6 +1473,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsrs@0.21.0-ts7.1.0-beta:
+    resolution: {integrity: sha512-4aafVQhCMlJ9Qhjm3wT/a0o21HO7ajTDA6cSCnP4PVNU1fhQ2rTXLxJxEbhonz969Hh8s+dYOlFpaO4GoJMzDA==}
+    engines: {node: '>=16.20.0'}
+    hasBin: true
+
   turbo-stream@3.2.0:
     resolution: {integrity: sha512-EK+bZ9UVrVh7JLslVFOV0GEMsociOqVOvEMTAd4ixMyffN5YNIEdLZWXUx5PJqDbTxSIBWw04HS9gCY4frYQDQ==}
 
@@ -1938,6 +1992,27 @@ snapshots:
     transitivePeerDependencies:
       - react
       - react-dom
+
+  '@tsrs/darwin-arm64@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/darwin-x64@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-arm64-gnu@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-arm64-musl@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-x64-gnu@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-x64-musl@0.21.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/win32-x64@0.21.0-ts7.1.0-beta':
+    optional: true
 
   '@tybys/wasm-util@0.10.2':
     dependencies:
@@ -2494,6 +2569,16 @@ snapshots:
 
   tslib@2.8.1:
     optional: true
+
+  tsrs@0.21.0-ts7.1.0-beta:
+    optionalDependencies:
+      '@tsrs/darwin-arm64': 0.21.0-ts7.1.0-beta
+      '@tsrs/darwin-x64': 0.21.0-ts7.1.0-beta
+      '@tsrs/linux-arm64-gnu': 0.21.0-ts7.1.0-beta
+      '@tsrs/linux-arm64-musl': 0.21.0-ts7.1.0-beta
+      '@tsrs/linux-x64-gnu': 0.21.0-ts7.1.0-beta
+      '@tsrs/linux-x64-musl': 0.21.0-ts7.1.0-beta
+      '@tsrs/win32-x64': 0.21.0-ts7.1.0-beta
 
   turbo-stream@3.2.0: {}
 

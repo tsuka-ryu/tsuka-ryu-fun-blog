@@ -37,8 +37,9 @@ FUNSTACK Static で作る静的技術ブログ。
 - push 前のフック（`lefthook.yml`）がビルドまで走らせる。ビルドは `URLPattern` を使うので、
   **Node 22 以下ではフックが落ちる。** Node 24 を `PATH` の先頭に付けて push する（フックは飛ばさない）。
 - PR のマージはスカッシュのみ（リベースマージは許可されていない）。
-- TypeScript はネイティブ版 `@typescript/native-preview`（`tsgo`）に一本化。
-  型チェックは `pnpm typecheck`（= `tsgo --noEmit`）。
+- 型チェックは `tsrs`（Rust 製の TypeScript 移植版）。`pnpm typecheck`（= `tsrs --noEmit`）。
+  エディタの言語サーバと lint の型情報は、引き続きネイティブ版 `@typescript/native-preview`（`tsgo`）を使う。
+  tsrs で誤検知や非互換を見つけたら issue を立てる（自分でパッチしてもよい）。
 
 ## ディレクトリ構成
 
@@ -58,7 +59,7 @@ FUNSTACK Static で作る静的技術ブログ。
 ## 進め方の方針
 
 - ファイルは依存の末端から作り、未作成モジュール依存はスタブではなく
-  **コメントアウト**で逃がして各コミットを tsgo green に保つ。
+  **コメントアウト**で逃がして各コミットを型チェック（`pnpm typecheck`）green に保つ。
 - コード内コメントは日本語で書く。
 - コメントは**コードだけを読む人に通じる自己完結した内容**にする。デザイン案の符牒
   （例「06 Marginalia」）・フェーズ番号・別ドキュメントの固有名など、外部文脈が

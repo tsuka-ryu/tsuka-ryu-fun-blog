@@ -13,7 +13,7 @@
     "preview": "vite preview --host",
     "start": "vite build && vite preview --host",
     "design": "vite design --config design/vite.config.ts --open",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsrs --noEmit",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix --fix-suggestions",
     "format": "oxfmt",
@@ -46,6 +46,7 @@
     "oxlint-tsgolint": "^0.23.0",
     "playwright": "^1.64.0",
     "takumi-js": "^1.8.3",
+    "tsrs": "0.21.0-ts7.1.0-beta",
     "vite": "^8.0.16",
     "vitest": "^5.0.3"
   },

@@ -1358,3 +1358,20 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
   RSC ペイロード分割を捨てることになり、バンドルも増える。まず Markdown 配信で足りるかを見る。
 - **未確認**: 本番（Vercel）での `.md` の Content-Type。確認してから必要なら `vercel.json` の headers で
   `text/markdown; charset=utf-8` を指定する。
+
+### 2026-11-06 — 型チェックを tsgo から tsrs に差し替える
+
+- **採用**: `scripts.typecheck` を `tsgo --noEmit` から `tsrs --noEmit` に変更。`tsrs`（Oxc 配下、Cloudflare・VoidZero
+  製の TypeScript Rust 移植版）を `0.21.0-ts7.1.0-beta` に固定して devDependency に追加。
+  - 確認: 既存コードで exit 0。意図的に入れた型エラー 2 件は tsgo と同じ内容で検出した。
+  - 理由: lint が Oxc 系（oxlint・oxfmt）なので揃う。速さの利点はこの規模では小さいが、不具合は issue に出す／自分でパッチする
+    前提で先に使う。
+- **`@typescript/native-preview` は残した**: エディタ設定（`typescript.experimental.useTsgo`）と、`oxlint --type-aware`
+  の型情報の経路が tsgo のため。外すかは別途判断。
+- **却下した代替案**: 別スクリプトで併走させて結果を比べ続ける案。差し替えてよいと判断したので省いた。
+  `tsrs` は実験段階なので、非互換が出たら `tsgo --noEmit` に戻せる。
+- **ハマりどころ（pnpm の信頼ポリシー）**: `trustPolicy: no-downgrade` が `tsrs` を弾く（`ERR_PNPM_TRUST_DOWNGRADE`）。
+  初期の版は staged publish、後の版は trusted publisher（provenance 付き）で、pnpm が信頼度の低下と判定するため。
+  provenance は `oxc-project/tsrs` のものと確認し、`trustPolicyExclude` に**採用バージョンだけ**を書いて通した。
+  バージョンを上げるときは、この除外も書き換える。
+- **同時に `minimumReleaseAge` を 7 日から 3 日に短縮**。別リポジトリ（tsuka-ryu-s-blog）とは値がずれる。
