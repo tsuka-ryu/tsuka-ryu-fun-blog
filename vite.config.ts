@@ -24,6 +24,10 @@ export default defineConfig({
     external: ["@ox-content/napi", "takumi-js", "@takumi-rs/core"],
   },
   optimizeDeps: {
+    // 最初から事前バンドルに含めておく。含めないと初回アクセス時に発見されて再最適化が走り、
+    // react/jsx-runtime の共有 export (`t`) が古い ?v= 付きの URL で欠落して
+    // "does not provide an export named 't'" で画面が壊れる。
+    include: ["@funstack/router", "@paper-design/shaders-react"],
     exclude: ["@ox-content/napi", "takumi-js", "@takumi-rs/core"],
   },
 });
