@@ -1385,8 +1385,15 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
 - **`@typescript/native-preview` を devDependency から削除**: 使っていたのは CLI の `typecheck` とエディタ設定だけで、
   どちらも tsrs に移った。`oxlint --type-aware` は別パッケージ（`oxlint-tsgolint`）が型情報を持つので影響しない
   （`pnpm run lint` で確認）。
-- **未確認**: VS Code 上での実動作（この環境にエディタがないため）。初回はワークスペース信頼と SDK 実行の許可を求められる。
-  動かない場合は「TypeScript 7: Restart Server」か、出力チャンネルで起動した実行ファイルを確認する。
+- **VS Code での初回手順（実機で確認済み）**: 設定を入れただけでは `tsrs` にならず、拡張に同梱の `tsc` が起動する。
+  次の順で切り替える。
+  1. ワークスペース信頼と SDK 実行の許可を出す。
+  2. コマンドパレットで「TypeScript: Select TypeScript Version」を実行し、ワークスペースのバージョンを選ぶ
+     （`js/ts.tsdk.path` をワークスペース設定に書いた場合は、これで切り替えないと使われない）。
+  3. 「TypeScript 7: Restart Server」を実行する。
+  4. 出力パネル「TypeScript 7」で、最新の `Resolved to` が `node_modules/.../tsrs/tsdk/tsgo` になっていることを確認する
+     （`.vscode/extensions/typescriptteam.native-preview-.../lib/tsc` なら同梱版のまま）。
+     ログは再起動のたびに追記されるので、再起動直後の一番下の行を見る。
 - **注意**: tsrs の README によると、tsrs リポジトリは issue のみ受け付け、Pull Request は閉じている。
   「自分でパッチする」はフォークで持つ形になる。
 - 設定は Windows では別パッケージ（`@tsrs/win32-x64`）が要る。macOS / Linux のみ想定で、必要になったら足す。
