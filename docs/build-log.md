@@ -1358,3 +1358,54 @@ Phase 0 の本番確認を、無料プランのまま行った。手順は `docs
   RSC ペイロード分割を捨てることになり、バンドルも増える。まず Markdown 配信で足りるかを見る。
 - **未確認**: 本番（Vercel）での `.md` の Content-Type。確認してから必要なら `vercel.json` の headers で
   `text/markdown; charset=utf-8` を指定する。
+
+### 2026-11-06 — 型チェックを tsgo から tsrs に差し替える
+
+- **採用**: `scripts.typecheck` を `tsgo --noEmit` から `tsrs --noEmit` に変更。`tsrs`（Oxc 配下、Cloudflare・VoidZero
+  製の TypeScript Rust 移植版）を `0.21.0-ts7.1.0-beta` に固定して devDependency に追加。
+  - 確認: 既存コードで exit 0。意図的に入れた型エラー 2 件は tsgo と同じ内容で検出した。
+  - 理由: lint が Oxc 系（oxlint・oxfmt）なので揃う。速さの利点はこの規模では小さいが、不具合は issue に出す／自分でパッチする
+    前提で先に使う。
+- **`@typescript/native-preview` は残した**: エディタ設定（`typescript.experimental.useTsgo`）と、`oxlint --type-aware`
+  の型情報の経路が tsgo のため。外すかは別途判断。
+- **却下した代替案**: 別スクリプトで併走させて結果を比べ続ける案。差し替えてよいと判断したので省いた。
+  `tsrs` は実験段階なので、非互換が出たら `tsgo --noEmit` に戻せる。
+- **ハマりどころ（pnpm の信頼ポリシー）**: `trustPolicy: no-downgrade` が `tsrs` を弾く（`ERR_PNPM_TRUST_DOWNGRADE`）。
+  初期の版は staged publish、後の版は trusted publisher（provenance 付き）で、pnpm が信頼度の低下と判定するため。
+  provenance は `oxc-project/tsrs` のものと確認し、`trustPolicyExclude` に**採用バージョンだけ**を書いて通した。
+  バージョンを上げるときは、この除外も書き換える。
+- **同時に `minimumReleaseAge` を 7 日から 3 日に短縮**。別リポジトリ（tsuka-ryu-s-blog）とは値がずれる。
+
+### 2026-11-06 — エディタの言語サーバも tsrs にし、native-preview を外す
+
+- **採用**: `.vscode/settings.json` で `js/ts.tsdk.path` を `./node_modules/tsrs/tsdk` に向け、`js/ts.experimental.useTsgo`
+  を使う。tsrs は `tsgo --lsp --stdio` と同じ LSP を話し、パッケージが `tsdk/tsgo`（実体は tsrs への委譲）を持つため、
+  VS Code 拡張「TypeScript (Native Preview)」がそのまま起動できる。lockfile のバージョンにエディタも揃う。
+  キー名は旧 `typescript.experimental.useTsgo` から `js/ts.experimental.useTsgo` に変えた（tsrs のドキュメントに従う）。
+- **`@typescript/native-preview` を devDependency から削除**: 使っていたのは CLI の `typecheck` とエディタ設定だけで、
+  どちらも tsrs に移った。`oxlint --type-aware` は別パッケージ（`oxlint-tsgolint`）が型情報を持つので影響しない
+  （`pnpm run lint` で確認）。
+- **VS Code での初回手順（実機で確認済み）**: 設定を入れただけでは `tsrs` にならず、拡張に同梱の `tsc` が起動する。
+  次の順で切り替える。
+  1. ワークスペース信頼と SDK 実行の許可を出す。
+  2. コマンドパレットで「TypeScript: Select TypeScript Version」を実行し、ワークスペースのバージョンを選ぶ
+     （`js/ts.tsdk.path` をワークスペース設定に書いた場合は、これで切り替えないと使われない）。
+  3. 「TypeScript 7: Restart Server」を実行する。
+  4. 出力パネル「TypeScript 7」で、最新の `Resolved to` が `node_modules/.../tsrs/tsdk/tsgo` になっていることを確認する
+     （`.vscode/extensions/typescriptteam.native-preview-.../lib/tsc` なら同梱版のまま）。
+     ログは再起動のたびに追記されるので、再起動直後の一番下の行を見る。
+- **注意**: tsrs の README によると、tsrs リポジトリは issue のみ受け付け、Pull Request は閉じている。
+  「自分でパッチする」はフォークで持つ形になる。
+- 設定は Windows では別パッケージ（`@tsrs/win32-x64`）が要る。macOS / Linux のみ想定で、必要になったら足す。
+
+### 2026-11-06 — 型情報を使う lint のバックエンドも tsrs-lint にし、oxlint-tsgolint を外す
+
+- **採用**: `lint` / `lint:fix` に `OXLINT_TSGOLINT_PATH=node_modules/.bin/tsrs-lint` を付け、`oxlint --type-aware`
+  の型情報の提供元を `oxlint-tsgolint` から tsrs 同梱の `tsrs-lint` に変えた。`oxlint-tsgolint` は devDependency から削除。
+  - 確認: `no-floating-promises` と `await-thenable` に違反するコードで、両者が同じ診断（位置・メッセージ）を出した。
+    違反のない現状のコードは exit 0（`lint` / `lint:fix` とも）。
+- **ハマりどころ**: パスは `tsrs` ではなく `tsrs-lint`（ランチャー）を指す。oxlint は `<path> headless ...` で呼ぶため、
+  `tsrs` を指すと `headless` がルートファイルとして読まれる（tsrs のドキュメントの注意書き）。
+- **却下した代替案**: `oxlint --type-aware --type-check` で lint と型チェックを一本化する案。tsrs のドキュメント上は
+  置き換えられるが、対象の tsconfig やコンパイラオプションが揃うときに限る。まず `typecheck` を別に残して挙動を見る。
+- **注意**: 環境変数をスクリプトに直書きしたので、Windows では動かない。必要になったら `cross-env` などを足す。
