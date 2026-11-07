@@ -3,10 +3,19 @@ title: oxcのTypeScriptパーサーを読む 第8回 積み残した型の難所
 description: mapped type、tuple type、template literal type、型述語、そしてアロー関数の曖昧性を、oxc のパーサーがどう読み分けているのかを1つずつ見ます。アロー関数では、投機パースとカバー文法の2つのやり方を並べました。
 date: 2026-11-07
 tags: ["コンパイラ", "パーサー", "oxc", "TypeScript", "oxc-ts-parser"]
-draft: true
 ---
 
+先にお断りしておきます。この記事に書いた内容は、私がコードを十分に読み込んで確かめたものではありません。oxc、tsc、acorn、仕様の中身や実行結果は、Claude に読んで動かしてもらった内容を、私が自分で確認しきれないまま載せています。間違いが混じっているかもしれないので、そのつもりで読んでください。手が空いたら、改めて確認するつもりです。
+
 この記事では、TypeScript の型の文法のうち扱いが特殊な4つ (mapped type、tuple type、template literal type、型述語) と、アロー関数の曖昧性を、oxc のパーサーがどう読み分けているのかを1つずつ見ていきます。
+
+| 話題                  | 何が紛らわしいか                                            | oxc の読み分け方                                                                    |
+| --------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| mapped type           | `{ [K in` と `{ [k:` は4トークン目まで同じ形                | 4トークン先まで `lookahead` で見て決める                                            |
+| tuple type            | rest 要素の重複を、いつ・何を見て判定するか                 | rev では `...` の後ろの書かれた形で判定 (後にパーサーから削除)                      |
+| template literal type | `${}` の中の `}` が、閉じ波括弧かテンプレートの続きか       | レキサーはまず閉じ波括弧として切り、パーサーが読み直させる                          |
+| 型述語                | `x is` の `x` が普通の識別子か、型述語の引数か              | 次の1トークンが `is` かどうかを覗く                                                 |
+| アロー関数            | `(a, b)` が括弧式か引数リストか、最後の `=>` まで分からない | `Tristate` で見当を付け、`Maybe` のときだけ投機パース。分割代入の左辺にはカバー文法 |
 
 ## 今回読むファイル
 
@@ -21,9 +30,9 @@ crates/oxc_parser/src/js/grammar.rs        245行   分割代入のためのカ�
 crates/oxc_parser/src/lib.rs             1,340行   パースの最後に出すエラー
 ```
 
-tuple type、型述語、アロー関数の節では、比較のために tsc (6.0.3) と acorn (8.18.0) も出てきます。この2つの中身と実行結果、それに仕様 (ECMAScript) の該当箇所は、Claude に確認してもらったものです。
+比較のために tsc (6.0.3) と acorn (8.18.0) も出てきます。この2つの中身と実行結果、仕様 (ECMAScript) の該当箇所、次に書く最新の main の結果と変更の経緯 (コミットメッセージ) は、すべて Claude に確認してもらったものです。
 
-この rev の後で oxc は変わっていて、tuple type の rest 要素の検査は最新の main (2026-11-04 の `98b65d8353`) のパーサーから消えています。mapped type、型述語、アロー関数の判定とカバー文法のコードも、動きは同じまま書き方が変わっています。該当する箇所で触れます。そちらで流した結果と、変更の経緯 (コミットメッセージ) も、Claude に確認してもらいました。
+この rev の後で oxc は変わっていて、tuple type の rest 要素の検査は最新の main (2026-11-04 の `98b65d8353`) のパーサーから消えています。ほかの話題も、動きは同じまま書き方が変わっています。該当する箇所で触れます。特に断らない限り、出力は rev のときと同じでした。
 
 ## 下準備: oxc の AST を手元で出す
 
@@ -195,8 +204,6 @@ fn is_start_of_mapped_type(&mut self) -> bool {
 }
 ```
 
-上から順に、`{` を食べる、`+` か `-` が来たらその次が `readonly` かどうかで決める、`readonly` があれば読み飛ばす、`[` が無くて名前が来たら普通のプロパティなので偽、と進みます。最後に `[` の次のトークン (キーの名前) を食べて、その次が `in` かどうかを見ます。
-
 つまり、`{ [K in T]: U }` と `{ [k: string]: U }` は、`{` `[` 識別子 の3トークンまで同じ形で、4トークン目が `in` か `:` かで初めて分かれます。`readonly` や `+` `-` が付く形でも、見るトークンの数は数個に収まるので、投機パースは要らず、先読みだけで済んでいます。`lookahead` の中で食べたトークンは判定のあとで全部巻き戻るので、本体の `parse_mapped_type` (`ts/types.rs:640`) は、もう一度 `{` から素直に読み直します。
 
 ### その後、判定の入口が変わった
@@ -214,7 +221,7 @@ fn is_start_of_mapped_type(&mut self) -> bool {
 }
 ```
 
-`worker` の中身は、`{` を食べる行が無くなっただけで、上の関数の続きと同じです。`{ [K in T]: U }` と `{ [k: string]: U }` が `[` の次の名前のあと、`in` か `:` かで分かれるのは変わりません。最新の main で流した出力も、この2つで同じでした。
+`worker` の中身は、`{` を食べる行が無くなっただけで、上の関数の続きと同じです。`{ [K in T]: U }` と `{ [k: string]: U }` が `[` の次の名前のあと、`in` か `:` かで分かれるのは変わりません。
 
 ## tuple type: rest 要素の重複は、書かれた形で判定する
 
@@ -397,7 +404,7 @@ pub(crate) fn re_lex_template_substitution_tail(&mut self) {
 }
 ```
 
-現在のトークンが `}` なら、レキサーの `next_template_substitution_tail` に、その `}` からテンプレートの続きとして読み直させます。読み直した結果が `TemplateMiddle` ならループが `quasis` に足して次の型へ、`TemplateTail` なら足して終わりです。`quasis` の `"b"` が `}` の位置から始まっていたのは、この読み直しで `}b${` が1つのトークンになったからです。
+現在のトークンが `}` なら、レキサーの `next_template_substitution_tail` に、その `}` からテンプレートの続きとして読み直させます。`quasis` の `"b"` が `}` の位置から始まっていたのは、この読み直しで `}b${` が1つのトークンになったからです。
 
 この呼び出しは、式のテンプレートリテラルを読む `parse_template_literal` (`js/expression.rs:555`) にも同じ形で2か所あります。`${}` の中身が式か型かが違うだけで、`}` の扱いは式と型で共通です。
 
@@ -556,13 +563,13 @@ let type_predicate_variable = if self.at(Kind::Ident) {
 };
 ```
 
-`this` や `asserts` のような識別子以外の名前は、これまでどおり `parse_type_predicate_prefix` で `peek_token` を使います。`x is string` や `[is]` の出力は、最新の main でも rev と同じでした。
+`this` や `asserts` のような識別子以外の名前は、これまでどおり `parse_type_predicate_prefix` で `peek_token` を使います。
 
 ### もとは投機パースだった
 
-この関数は、もとから覗くだけの形だったわけではありません。Claude に oxc の git の履歴を調べてもらうと、2026年4月のコミット (PR [#21532](https://github.com/oxc-project/oxc/pull/21532)、`perf(parser): reduce try_parse usage in favour of lookahead`) で今の形になっていました。それまでの `parse_type_or_type_predicate` は、名前を読んでみて、次が `is` でなければ失敗にする関数を、投機パースの `try_parse` (checkpoint を取り、致命的なエラーになったら rewind して `None` を返す関数。この PR で `cursor.rs` から消えました) で包んで呼んでいました。
+この関数は、もとから覗くだけの形だったわけではありません。Claude に oxc の git の履歴を調べてもらうと、2026年4月のコミット (PR [#21532](https://github.com/oxc-project/oxc/pull/21532)、`perf(parser): reduce try_parse usage in favour of lookahead`) で今の形になっていました。それまでの `parse_type_or_type_predicate` は、名前を読んでみて、次が `is` でなければ失敗にする関数を、投機パースの `try_parse` で包んで呼んでいました。
 
-ここは Claude に確認してもらった内容ですが、tsc 6.0.3 の `parseTypeOrTypePredicate` も `tryParse(parseTypePredicatePrefix)` と投機の形で、Go 版の tsc (microsoft/TypeScript の rev `f29aeb9f82` にある `tsc/internal/parser/parser.go:3456`) も `p.mark()` で状態を保存してから名前を読み、`is` が来なければ `p.rewind(state)` で戻す形でした。`x is` の `x` と `is` の間には何も入らないので、1トークン覗けば足ります。oxc は、移植したあとで、この投機を先読みに置き換えたことになります。
+tsc 6.0.3 の `parseTypeOrTypePredicate` も `tryParse(parseTypePredicatePrefix)` と投機の形で、Go 版の tsc (microsoft/TypeScript の rev `f29aeb9f82` にある `tsc/internal/parser/parser.go:3456`) も、`p.mark()` で保存して `p.rewind(state)` で戻す形でした。`x is` の `x` と `is` の間には何も入らないので、1トークン覗けば足ります。oxc は、この投機を先読みに置き換えたことになります。
 
 ## アロー関数: 投機パースとカバー文法
 
@@ -616,7 +623,7 @@ match third {
 
 JavaScript に `(a:` で始まる式は無いので、`:` が来たら型注釈付きの引数と分かり、その場で `True` です。`(a?:` や `(a?,` も同じで、TypeScript にしかない省略可能な引数の書き方です。一方 `(a,` `(a=` `(a)` は、括弧の式としても引数としても成り立つので `Maybe` になります。ほかに、`(` の次が `[` か `{` の場合 (`([x])` や `({ x })`) も、配列やオブジェクトのリテラルか分割代入の引数か決められないので、`Maybe` を返す腕があります。
 
-型注釈の付いた引数は、それだけでアロー関数と確定します。rev では、`(` の次が識別子の場合に投機パースに回るのは、`(a,` `(a=` `(a)` の3つだけでした。
+rev では、`(` の次が識別子の場合に投機パースに回るのは、`(a,` `(a=` `(a)` の3つだけでした。
 
 ### その後、`(a)` は先読みで決まるようになった
 
@@ -635,7 +642,7 @@ Kind::RParen if second.is_identifier() => {
 }
 ```
 
-最新の main では、`(a) => a` は `True`、`(a)` は `False` で決まり、投機パースに回りません。`(a,` と `(a=` は、これまでどおり `Maybe` です。以下の説明で使う `(a, b);` と `({ a = 1 });` の流れは、そのままです。
+最新の main では、`(a) => a` は `True`、`(a)` は `False` で決まり、投機パースに回りません。`(a,` と `(a=` は、これまでどおり `Maybe` です。
 
 ### Maybe のときは引数として読んでみる
 
@@ -661,7 +668,7 @@ fn parse_possible_parenthesized_arrow_function_expression(
     }
 ```
 
-checkpoint を取り、`parse_parenthesized_arrow_function_head` で括弧の中をアロー関数の引数として読みます。この関数は引数のリストのあとで `self.expect(Kind::Arrow)` を呼ぶので、`=>` が来なければ、そこで致命的なエラーになります。そうなったら rewind して `None` を返し、呼び出し元が今度は式として読み直します。`(a, b);` の `a` と `b` は、引数として1回、式として1回の、合わせて2回読まれることになります。
+`parse_parenthesized_arrow_function_head` は引数のリストのあとで `self.expect(Kind::Arrow)` を呼ぶので、`=>` が来なければ致命的なエラーになり、rewind して `None` を返します。呼び出し元が今度は式として読み直すので、`(a, b);` の `a` と `b` は、引数として1回、式として1回、合わせて2回読まれます。
 
 失敗したときに位置を入れている `not_parenthesized_arrow` は、この位置はアロー関数ではなかった、と覚えておくための集合です。同じ位置でもう一度ここに来たときに、投機をせずにすぐ諦められます。
 
@@ -736,7 +743,7 @@ if is_shorthand_property_assignment {
         }
 ```
 
-ここでは `a = 1` を見つけても、その場ではエラーにせず、`self.state.cover_initialized_name` に位置をキーにして取っておきます。acorn の `shorthandAssign` と同じ発想です。
+ここでは `a = 1` を見つけても、その場ではエラーにせず、`self.state.cover_initialized_name` に位置をキーにして取っておきます。
 
 取っておいたものは、あとで分割代入だと分かると消されます。`({ a = 1 } = obj);` のように `=` が続いた場合、代入の左辺を `AssignmentTarget::cover` で代入先のパターンに作り変えます。この変換を集めた `js/grammar.rs` の冒頭の doc コメントは `//! Cover Grammar for Destructuring Assignment` で、プロパティを変換する腕 (`js/grammar.rs:226`) が `cover_initialized_name` から該当するものを取り除いています。
 
@@ -760,22 +767,22 @@ fn check_unfinished_errors(&mut self) {
 
 コメントの2行目は、仕様の `CoverInitializedName` の規則そのままです。`({ a = 1 } = obj);` は、oxc でもエラーなしで通りました。
 
-rev の後の2026年10月30日に、取っておくものが変わりました ([oxc#28495](https://github.com/oxc-project/oxc/pull/28495))。最新の main では `cover_initialized_name` に、`a = 1` を組み立てた `AssignmentExpression` ではなく、位置 (`span`) と右辺 (`initializer`) だけの `CoverInitializedName` を入れます。`js/grammar.rs` の取り除く側は `.map(|cover| cover.initializer)`、`check_unfinished_errors` の側は `cover.span` を使います。取っておき、分割代入と分かれば消し、最後に残ったものをエラーにする流れは同じで、`({ a = 1 });` のエラーも rev と同じ出力でした。
+rev の後の2026年10月30日に、取っておくものが変わりました ([oxc#28495](https://github.com/oxc-project/oxc/pull/28495))。最新の main では `cover_initialized_name` に、`a = 1` を組み立てた `AssignmentExpression` ではなく、位置 (`span`) と右辺 (`initializer`) だけの `CoverInitializedName` を入れます。`js/grammar.rs` の取り除く側は `.map(|cover| cover.initializer)`、`check_unfinished_errors` の側は `cover.span` を使います。取っておき、分割代入と分かれば消し、最後に残ったものをエラーにする流れは同じです。
 
 つまり oxc は、アロー関数の引数は投機パースで、分割代入の左辺はカバー文法で、と使い分けています。`({ a = 1 });` は、その両方を通っていたことになります。
 
-なお、アロー関数を投機パースで扱うのは oxc の独自の判断ではありません。Claude に確認してもらったところ、tsc 6.0.3 の `isParenthesizedArrowFunctionExpressionWorker` にも、上の `match third` と同じ分岐が並んでいました (3つ目の値の名前は、oxc の `Maybe` に対して tsc は `Unknown`)。配布されている JavaScript にはコメントが残っていないので、コメントは Go 版 (`tsc/internal/parser/parser.go:4322` から) で突き合わせてもらい、oxc の上のコメントと同じ文面でした。
+## 連載の一覧
 
-## まとめ
+この連載の全9本です。
 
-- mapped type とインデックスシグネチャは、`{` `[` 識別子 の次のトークンで分かれる。何トークン見れば決まるかが固定なので、投機ではなく `lookahead` で済む
-- tuple type の rest 要素の重複は、rev の oxc ではパーサーが `...` の後ろの書かれた形で判定していた。tsc はチェッカーが型を解決してから判定するので、`readonly number[]` の扱いが違った。この検査は2026年9月30日にパーサーから削られた
-- template literal type の `}` は、レキサーが最初は閉じ波括弧として切り、パーサーが頼んでテンプレートの続きとして読み直させる。この仕組みは式のテンプレートリテラルと共通
-- 型述語の `x is` は、次の1トークンを見るだけで判定する (rev では `peek_token`、最新の main では普通の識別子だけ先に食べて見る)。tsc と ts-go は投機の形で、oxc も2026年4月までは同じ形だった
-- アロー関数の引数は、`Tristate` で見当を付け、`Maybe` のときだけ投機パースする。一方で、分割代入の左辺にはカバー文法を使っていて、oxc の中に2つのやり方が同居している
-
-## 連載を終えて
-
-この連載では、oxc のパーサーの中で TypeScript が関わる部分を、型の文法、式への食い込み、AST の形、と順に読んできました。曖昧な場所に出会うたびに、先読みで決めるのか、読んでみて戻るのか、レキサーに読み直しを頼むのか、読んだ木を作り変えるのか、という選択が出てきて、その選び方を追ってきました。この回で連載はおしまいです。最後まで読んでいただき、ありがとうございました。
-
-なお、この記事で自分で実際に読んだのは oxc のパーサーだけです。tsc、typescript-go、acorn の中身や、仕様の該当箇所は Claude に確認してもらったものなので、間違っていたら指摘してもらえると助かります。
+| 回  | タイトル                                                                   | 中身                                                                   |
+| --- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 0   | [はじめに](/posts/2026-09-23-oxc-ts-parser-intro)                          | 何を読んだのか、どういう順番で書くのかの見取り図                       |
+| 1   | [型はどう読まれるか](/posts/2026-09-24-oxc-ts-parser-types)                | ユニオン型を宣言するだけの型を実際に追う                               |
+| 2   | [TypeScriptはどこに住んでいるか](/posts/2026-09-25-oxc-ts-parser-map)      | リポジトリとファイルの地図                                             |
+| 3   | [型引数つき呼び出しがASTになるまで](/posts/2026-09-26-oxc-ts-parser-trace) | `f<T>(x);` と `a < b > c;` を先頭から通しで追う                        |
+| 4   | [そのASTは誰に合わせているのか](/posts/2026-09-27-oxc-ts-parser-ast)       | TypeScript AST / TSESTree / oxc の3者の関係                            |
+| 5   | [1 + 1 as number / 2 事件](/posts/2026-11-04-oxc-ts-parser-as)             | `as` の優先順位                                                        |
+| 6   | [そのエラー、誰が出してるの?](/posts/2026-11-05-oxc-ts-parser-errors)      | パーサー / セマンティック解析 / 型チェッカーの住み分け                 |
+| 7   | [tscの移植の、引き算と足し算](/posts/2026-11-06-oxc-ts-parser-port)        | oxc が捨てたものと、tsc には無い近道                                   |
+| 8   | 積み残した型の難所たち (この記事)                                          | mapped type / tuple type / template literal type / 型述語 / アロー関数 |
