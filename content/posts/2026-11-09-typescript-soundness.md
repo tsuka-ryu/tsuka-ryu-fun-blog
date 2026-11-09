@@ -2,7 +2,6 @@
 title: 「健全性」とTypeScript ── TAPL8章を添えて
 description: 健全性とは何か。「進行」と「保存」という定義から出発して、TypeScriptが健全性をどこで手放しているのか、TypeScriptチームがなぜそれを直さないのかを読んでみました。
 date: 2026-11-09
-draft: true
 tags: ["TypeScript", "型システム", "健全性", "TAPL", "コンパイラ"]
 ---
 
